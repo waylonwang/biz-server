@@ -1,0 +1,9 @@
+pytz
+flask
+sqlalchemy
+flask_sqlalchemy
+flask_admin
+flask_login
+flask_babelex
+wtforms
+werkzeug
