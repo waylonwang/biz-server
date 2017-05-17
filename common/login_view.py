@@ -1,4 +1,5 @@
 import flask_login as login
+
 from app_view import CVAdminModelView
 from plugin import PluginsRegistry
 
@@ -18,7 +19,7 @@ class UserView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '用户','系统设置')
 
     def is_accessible(self):
-        from login.login_control import admin_permission
+        from common.login_control import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -29,7 +30,7 @@ class RoleView(CVAdminModelView):
     can_edit = True
     can_delete = True
     # column_auto_select_related = True
-    from login.login_model import User
+    from common.login_model import User
     # inline_models =[(User, dict(
     #     column_descriptions=dict(users='用户')
     # ))]
@@ -41,7 +42,7 @@ class RoleView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '角色','系统设置')
 
     def is_accessible(self):
-        from login.login_control import admin_permission
+        from common.login_control import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:

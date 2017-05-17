@@ -13,7 +13,6 @@ admin = None
 
 
 class CVAdminModelView(ModelView):
-    column_display_pk = True
     can_create = False
     can_edit = True
     can_delete = False
@@ -30,7 +29,7 @@ class CVAdminFileView(FileAdmin):
     column_labels = dict(name='文件名', size='大小', date='修改时间')
 
     def is_accessible(self):
-        from login.login_control import admin_permission
+        from common.login_control import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -48,7 +47,7 @@ class CVAdminIndexView(AdminIndexView):
     @expose('/login/', methods=('GET', 'POST'))
     def login_view(self):
         # handle user login
-        from login.login_control import LoginForm
+        from common.login_control import LoginForm
         form = LoginForm(request.form)
         if helpers.validate_form_on_submit(form):
             user = form.get_user()
@@ -66,10 +65,10 @@ class CVAdminIndexView(AdminIndexView):
 
     @expose('/register/', methods=('GET', 'POST'))
     def register_view(self):
-        from login.login_control import RegistrationForm
+        from common.login_control import RegistrationForm
         form = RegistrationForm(request.form)
         if helpers.validate_form_on_submit(form):
-            from login.login_model import User
+            from common.login_model import User
             user = User()
 
             form.populate_obj(user)

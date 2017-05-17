@@ -4,9 +4,9 @@ from werkzeug.security import check_password_hash
 from wtforms import form, validators, fields
 
 import db_control
-from login import login_model
+from common import login_model
 # Create the Flask-Principal's instance
-from login.login_model import User
+from common.login_model import User
 
 principals = Principal()
 
