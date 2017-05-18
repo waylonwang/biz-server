@@ -36,7 +36,8 @@ class Speak(db.Model):
     target_map = {'group': 'g', 'discuzz': 'd', 'private': 'p'}
 
     @staticmethod
-    def create(botid, target, sender_id, message, **kwargs):
+    def create(botid, target_type, target_account, sender_id, message, **kwargs):
+        target = Speak.target_map.get(target_type) + '#' + target_account
         washed_text = SpeakWash.do(botid, message)
         record = Speak(botid = botid,
                        target = target,
@@ -65,8 +66,8 @@ class Speak(db.Model):
         return record
 
     @staticmethod
-    def updatewash(botid, target_type, account, date_from, date_to):
-        records = Speak.find_by_date(botid, target_type, account, date_from, date_to)
+    def updatewash(botid, target_type, target_account, date_from, date_to):
+        records = Speak.find_by_date(botid, target_type, target_account, date_from, date_to)
         count = len(records)
         for record in records:
             record.washed_text = SpeakWash.do(record.botid, record.message)
@@ -75,8 +76,8 @@ class Speak(db.Model):
         return count
 
     @staticmethod
-    def find_by_date(botid, target_type, account, date_from, date_to):
-        target = Speak.target_map.get(target_type) + '#' + account
+    def find_by_date(botid, target_type, target_account, date_from, date_to):
+        target = Speak.target_map.get(target_type) + '#' + target_account
         return Speak.query.filter(Speak.botid == botid,
                                   Speak.target == target,
                                   Speak.date >= date_from,
@@ -87,8 +88,16 @@ class Speak(db.Model):
         return Speak.query.filter_by(id = id).first()
 
     @staticmethod
-    def get_top(botid, target_type, account, date_from, date_to, limit = 10, is_valid = False):
-        target = Speak.target_map.get(target_type) + '#' + account
+    def find_first_by_sender_name(sender_name):
+        return Speak.query.filter_by(sender_name = sender_name).first()
+
+    @staticmethod
+    def find_last_by_sender_name(sender_name):
+        return Speak.query.filter_by(sender_name = sender_name).last()
+
+    @staticmethod
+    def get_top(botid, target_type, target_account, date_from, date_to, limit = 10, is_valid = False):
+        target = Speak.target_map.get(target_type) + '#' + target_account
         baseline = 0
         if is_valid:
             from plugins.setting import BotParam
@@ -97,7 +106,7 @@ class Speak(db.Model):
                 baseline = param.value
 
         return Speak.query.session.query(
-            Speak.sender_id, Speak.sender_name, func.count(1).label('cnt')
+            Speak.sender_id, func.last(Speak.sender_name), func.count(1).label('cnt')
         ).filter(
             Speak.botid == botid,
             Speak.target == target,
@@ -106,19 +115,26 @@ class Speak(db.Model):
             Speak.washed_chars >= baseline
         ).group_by(
             Speak.sender_id,
-            Speak.sender_name
         ).order_by(
             desc('cnt')
         ).limit(limit)
 
     @staticmethod
-    def get_count(botid, target_type, account, sender_id, sender_name, date_from, date_to):
-        target = Speak.target_map.get(target_type) + '#' + account
+    def get_count(botid, target_type, target_account, date_from, date_to, sender = None):
+        target = Speak.target_map.get(target_type) + '#' + target_account
         baseline = 0
         from plugins.setting import BotParam
         param = BotParam.find(botid, 'baseline')
         if param is not None:
             baseline = int(param.value)
+
+        if sender is None:
+            sender_id = None
+        elif not sender.isdigit():
+            record = Speak.find_first_by_sender_name(sender)
+            sender_id = record.sender_id
+        else:
+            sender_id = sender
 
         return Speak.query.session.query(
             func.sum(1).label('cnt_full'),
@@ -126,9 +142,9 @@ class Speak(db.Model):
         ).filter(
             Speak.botid == botid,
             Speak.target == target,
-            (Speak.sender_id == sender_id) | (Speak.sender_name == sender_name),
             Speak.date >= date_from,
-            Speak.date <= date_to
+            Speak.date <= date_to,
+            Speak.sender_id == sender_id if sender_id is not None else 1 == 1
         ).first()
 
 
@@ -346,13 +362,14 @@ def _format_target(text):
 
 
 # Control--------------------------------------------------------------------------------------------------
-class SpeakAPI(Resource):
+class SpeakRecordAPI(Resource):
     method_decorators = [ac.require_apikey]
 
     def post(self):
         try:
             parser = reqparse.RequestParser()
-            parser.add_argument('target', required = True, help = '请求中必须包含target')
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
             parser.add_argument('sender_id', required = True, help = '请求中必须包含sender_id')
             parser.add_argument('sender_name')
             parser.add_argument('date')
@@ -361,7 +378,8 @@ class SpeakAPI(Resource):
             parser.add_argument('message', required = True, help = '请求中必须包含message')
             args = parser.parse_args()
             record = Speak.create(ac.get_bot(),
-                                  args['target'],
+                                  args['target_type'],
+                                  args['target_account'],
                                   args['sender_id'],
                                   args['message'],
                                   sender_name = args['sender_name'],
@@ -517,13 +535,13 @@ class SpeakWashUpdateAPI(Resource):
         try:
             parser = reqparse.RequestParser()
             parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
-            parser.add_argument('account', required = True, help = '请求中必须包含account')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
             parser.add_argument('date_from', required = True, help = '请求中必须包含date_from')
             parser.add_argument('date_to', required = True, help = '请求中必须包含date_to')
             args = parser.parse_args()
             result = Speak.updatewash(ac.get_bot(),
                                       args['target_type'],
-                                      args['account'],
+                                      args['target_account'],
                                       args['date_from'],
                                       args['date_to'])
             if result is not None:
@@ -539,7 +557,7 @@ class SpeakTopAPI(Resource):
         try:
             parser = reqparse.RequestParser()
             parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
-            parser.add_argument('account', required = True, help = '请求中必须包含account')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
             parser.add_argument('date_from', required = True, help = '请求中必须包含date_from')
             parser.add_argument('date_to', required = True, help = '请求中必须包含date_to')
             parser.add_argument('limit', type = int)
@@ -547,7 +565,7 @@ class SpeakTopAPI(Resource):
             args = parser.parse_args()
             records = Speak.get_top(ac.get_bot(),
                                     args['target_type'],
-                                    args['account'],
+                                    args['target_account'],
                                     args['date_from'],
                                     args['date_to'],
                                     args['limit'] if args.get('limit', None) is not None else 10,
@@ -558,7 +576,7 @@ class SpeakTopAPI(Resource):
                                'sender_name': record.sender_name,
                                'count': record.cnt})
             return ac.success(target_type = args['target_type'],
-                              account = args['account'],
+                              target_account = args['target_account'],
                               date_from = args['date_from'],
                               date_to = args['date_to'],
                               limit = args['limit'],
@@ -573,40 +591,61 @@ class SpeakCountAPI(Resource):
         try:
             parser = reqparse.RequestParser()
             parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
-            parser.add_argument('account', required = True, help = '请求中必须包含account')
-            parser.add_argument('sender_id')
-            parser.add_argument('sender_name')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('sender', required = True, help = '请求中必须包含sender_id或sender_name')
             parser.add_argument('date_from', required = True, help = '请求中必须包含date_from')
             parser.add_argument('date_to', required = True, help = '请求中必须包含date_to')
 
             args = parser.parse_args()
-            if (args.get('sender_id') is None) and (args.get('sender_name') is None):
-                return ac.fault(error = Exception('请求中必须包含sender_id或sender_name'))
-
             record = Speak.get_count(ac.get_bot(),
-                                      args['target_type'],
-                                      args['account'],
-                                      args['sender_id'],
-                                      args['sender_name'],
-                                      args['date_from'],
-                                      args['date_to'])
+                                     args['target_type'],
+                                     args['target_account'],
+                                     args['date_from'],
+                                     args['date_to'],
+                                     args['sender'])
             if record is not None:
                 return ac.success(target_type = args['target_type'],
-                                  account = args['account'],
-                                  sender_id = args['sender_id'],
-                                  sender_name = args['sender_name'],
+                                  target_account = args['target_account'],
+                                  sender = args['sender'],
                                   date_from = args['date_from'],
                                   date_to = args['date_to'],
-                                  count_full = record.cnt_full,
-                                  count_valid = record.cnt_valid)
+                                  count_full = record.cnt_full if record.cnt_full is not None else 0,
+                                  count_valid = record.cnt_valid if record.cnt_valid is not None else 0)
         except Exception as e:
             return ac.fault(error = e)
 
 
-api.add_resource(SpeakAPI, '/speak', endpoint = 'speak')
+class SpeakTotalAPI(Resource):
+    def get(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('date_from', required = True, help = '请求中必须包含date_from')
+            parser.add_argument('date_to', required = True, help = '请求中必须包含date_to')
+
+            args = parser.parse_args()
+            record = Speak.get_count(ac.get_bot(),
+                                     args['target_type'],
+                                     args['target_account'],
+                                     args['date_from'],
+                                     args['date_to'])
+            if record is not None:
+                return ac.success(target_type = args['target_type'],
+                                  target_account = args['target_account'],
+                                  date_from = args['date_from'],
+                                  date_to = args['date_to'],
+                                  count_full = record.cnt_full if record.cnt_full is not None else 0,
+                                  count_valid = record.cnt_valid if record.cnt_valid is not None else 0)
+        except Exception as e:
+            return ac.fault(error = e)
+
+
+api.add_resource(SpeakRecordAPI, '/speakrecord', endpoint = 'speakrecord')
 api.add_resource(SpeakWashsAPI, '/speakwashs', endpoint = 'speakwashs')
 api.add_resource(SpeakWashAPI, '/speakwash', endpoint = 'speakwash')
 api.add_resource(SpeakWashDoAPI, '/speakwashdo', endpoint = 'speakwashdo')
 api.add_resource(SpeakWashUpdateAPI, '/speakwashupdate', endpoint = 'speakwashupdate')
 api.add_resource(SpeakTopAPI, '/speaktop', endpoint = 'speaktop')
 api.add_resource(SpeakCountAPI, '/speakcount', endpoint = 'speakcount')
+api.add_resource(SpeakTotalAPI, '/speaktotal', endpoint = 'speaktotal')
