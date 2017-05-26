@@ -1,200 +1,376 @@
-# import os
-# import sqlite3
-# from datetime import datetime
-#
-# import pytz
-#
-# from command import CommandRegistry
-# from plugins import core
-# from config import config
-# from interactive import *
-# from little_shit import get_db_dir, get_source, get_target, check_target
-#
-# __registry__ = cr = CommandRegistry()
-#
-# def _open_db_conn():
-#     conn = sqlite3.connect(os.path.join(get_db_dir(), 'plugins.sqlite'))
-#     conn.execute("""CREATE TABLE IF NOT EXISTS speak_apply (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-#         target TEXT NOT NULL,
-#         uid TEXT NOT NULL,
-#         date TEXT NOT NULL,
-#         time INTEGER NOT NULL,
-#         hasrecord INTEGER NOT NULL
-#         )""")
-#     conn.execute("""CREATE TABLE IF NOT EXISTS speak_record (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-#         target TEXT NOT NULL,
-#         uid TEXT NOT NULL,
-#         date TEXT NOT NULL,
-#         count INTEGER NOT NULL
-#         )""")
-#     conn.execute("""CREATE TABLE IF NOT EXISTS point_apply (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-#         target TEXT NOT NULL,
-#         target_uid TEXT NOT NULL,
-#         apply_uid TEXT NOT NULL,
-#         date TEXT NOT NULL,
-#         time INTEGER NOT NULL,
-#         point INTEGER NOT NULL,
-#         hasrecord INTEGER NOT NULL
-#         )""")
-#     conn.execute("""CREATE TABLE IF NOT EXISTS confirm_code (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-#         link_type TEXT NOT NULL,
-#         link_id INTEGER NOT NULL,
-#         target_uid TEXT NOT NULL,
-#         date TEXT NOT NULL,
-#         time INTEGER NOT NULL,
-#         code INTEGER NOT NULL,
-#         hasconfirm INTEGER NOT NULL
-#         )""")
-#     conn.commit()
-#     return conn
-#
-#
-# _cmd_take = 'note.take'
-# _cmd_remove = 'note.remove'
-#
-#
-# @cr.register('统计发言')
-# @check_target
-# def speak_apply(args_text, ctx_msg):
-#     source = get_source(ctx_msg)
-#
-#     conn = _open_db_conn()
-#     date_text = datetime.now(tz=pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
-#     time_unix = int(datetime.now(tz=pytz.timezone('Asia/Shanghai')).timestamp())
-#     daily_limit = config.get('score_daily_speak_apply_limit')
-#     try:
-#         cursor = conn.execute('SELECT count(id) FROM speak_apply WHERE target=? and uid = ? and date = ?',
-#                               (get_target(ctx_msg),ctx_msg.get('sender_id',''),date_text))
-#         today_cnt = cursor.fetchone()[0]
-#         if today_cnt == daily_limit - 1 :
-#             core.echo('[CQ:at,qq='+ ctx_msg.get('sender_id')+'] 温馨提醒：你今天还剩一次统计发言的机会', ctx_msg)
-#         elif today_cnt > daily_limit :
-#             core.echo('[CQ:at,qq=' + ctx_msg.get('sender_id') + '] 你今天可统计发言的次数已经用完', ctx_msg)
-#     except :
-#         pass
-#     finally:
-#         try:
-#             if today_cnt <= daily_limit :
-#                 conn.execute(
-#                     'INSERT INTO speak_apply (target, uid, date, time, hasrecord) VALUES (?, ?, ?, ?, 0)',
-#                     (get_target(ctx_msg), ctx_msg.get('sender_id',''), date_text, time_unix)
-#                 )
-#                 conn.commit()
-#                 core.echo('查询发言 @'+ ctx_msg.get('sender_name',''), ctx_msg)
-#         except:
-#             core.echo('[CQ:at,qq=' + ctx_msg.get('sender_id') + '] 对不起，程序出错了，暂时无法统计发言，请稍后再试！', ctx_msg)
-#         finally:
-#             conn.close()
-#
-#
-# @cr.register('@.*今天有效发言数')
-# @check_target
-# def speak_record_save(args_text, ctx_msg):
-#     conn = _open_db_conn()
-#     target = get_target(ctx_msg)
-#     cursor = conn.execute('SELECT id, dt, content FROM cmd_note WHERE target = ?', (target,))
-#     rows = list(cursor)
-#     conn.close()
-#     if len(rows) == 0:
-#         core.echo('还没有笔记哦～', ctx_msg)
-#         return
-#     for row in rows:
-#         tz_china = pytz.timezone('Asia/Shanghai')
-#         dt_raw = datetime.fromtimestamp(row[1], tz=pytz.utc)
-#         core.echo('ID：' + str(row[0])
-#                   + '\n时间：' + dt_raw.astimezone(tz_china).strftime('%Y.%m.%d %H:%M')
-#                   + '\n内容：' + str(row[2]),
-#                   ctx_msg)
-#     core.echo('以上～', ctx_msg)
-#
-#
-# @cr.register('报点')
-# @check_target
-# def point_apply(args_text, ctx_msg, allow_interactive=True):
-#     source = get_source(ctx_msg)
-#     if allow_interactive and (not args_text or has_session(source, _cmd_remove)):
-#         # Be interactive
-#         return _remove_interactively(args_text, ctx_msg, source)
-#
-#     try:
-#         note_id = int(args_text)
-#     except ValueError:
-#         # Failed to cast
-#         core.echo('你输入的 ID 格式不正确哦～应该是个数字才对～', ctx_msg)
-#         return
-#     conn = _open_db_conn()
-#     target = get_target(ctx_msg)
-#     cursor = conn.cursor()
-#     cursor.execute('DELETE FROM cmd_note WHERE target = ? AND id = ?', (target, note_id))
-#     if cursor.rowcount > 0:
-#         core.echo('删除成功了～', ctx_msg)
-#     else:
-#         core.echo('没找到这个 ID 的笔记哦～', ctx_msg)
-#     conn.commit()
-#     conn.close()
-#
-#
-# @cr.register('确认')
-# @check_target
-# def code_confirm(_, ctx_msg):
-#     conn = _open_db_conn()
-#     target = get_target(ctx_msg)
-#     cursor = conn.cursor()
-#     cursor.execute('DELETE FROM cmd_note WHERE target = ?', (target,))
-#     if cursor.rowcount > 0:
-#         core.echo('成功删除了所有的笔记，共 %s 条～' % cursor.rowcount, ctx_msg)
-#     else:
-#         core.echo('本来就没有笔记哦～', ctx_msg)
-#     conn.commit()
-#     conn.close()
-#
-#
-# _state_machines = {}
-#
-# # 统计每天发言
-# # 统计每周报点
-#
-# def _take_interactively(args_text, ctx_msg, source):
-#     def wait_for_content(s, a, c):
-#         core.echo('请发送你要记录的内容：', c)
-#         s.state += 1
-#
-#     def save_content(s, a, c):
-#         take(a, c, allow_interactive=False)
-#         return True
-#
-#     if _cmd_take not in _state_machines:
-#         _state_machines[_cmd_take] = (
-#             wait_for_content,  # 0
-#             save_content  # 1
-#         )
-#
-#     sess = get_session(source, _cmd_take)
-#     if _state_machines[_cmd_take][sess.state](sess, args_text, ctx_msg):
-#         # Done
-#         remove_session(source, _cmd_take)
-#
-#
-# def _remove_interactively(args_text, ctx_msg, source):
-#     def wait_for_note_id(s, a, c):
-#         core.echo('请发送你要删除的笔记的 ID：', c)
-#         s.state += 1
-#
-#     def remove_note(s, a, c):
-#         remove(a, c, allow_interactive=False)
-#         return True
-#
-#     if _cmd_remove not in _state_machines:
-#         _state_machines[_cmd_remove] = (
-#             wait_for_note_id,  # 0
-#             remove_note  # 1
-#         )
-#
-#     sess = get_session(source, _cmd_remove)
-#     if _state_machines[_cmd_remove][sess.state](sess, args_text, ctx_msg):
-#         # Done
-#         remove_session(source, _cmd_remove)
+from datetime import datetime
+
+from flask_admin.form import rules
+from wtforms import validators, fields
+
+import api_control as ac
+import db_control
+from app_view import CVAdminModelView
+from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
+    get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display
+from plugin import PluginsRegistry
+
+__registry__ = cr = PluginsRegistry()
+
+# Model----------------------------------------------------------------------------------------------------
+db = db_control.get_db()
+api = ac.get_api()
+
+
+class ScoreAccount(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'score_account'
+
+    botid = db.Column(db.String(20), primary_key = True)
+    name = db.Column(db.String(20), primary_key = True, unique = True)
+    description = db.Column(db.String(20), nullable = True)
+    type = db.Column(db.String(20), nullable = True, index = True)
+    is_default = db.Column(db.Integer, nullable = True, index = True)
+    target = db.Column(db.String(20), nullable = True)
+    income = db.Column(db.Integer, nullable = True)
+    outgo = db.Column(db.Integer, nullable = True)
+    balance = db.Column(db.Integer, nullable = True)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
+    remark = db.Column(db.String(255), nullable = True)
+
+    @staticmethod
+    def find_by_user(username):
+        from common.bot import BotAssign
+        return ScoreAccount.query.filter(
+            ScoreAccount.botid.in_((r.botid for r in BotAssign.find_by_user(username)))).all()
+
+    @staticmethod
+    def find_by_id(id):
+        return ScoreAccount.query.filter_by(botid = id.split(',')[0], name = id.split(',')[1]).first()
+
+
+class ScoreMember(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'score_member'
+
+    account = db.Column(db.String(20), primary_key = True)
+    member_id = db.Column(db.String(20), primary_key = True)
+    member_name = db.Column(db.String(20), nullable = False, index = True)
+    income = db.Column(db.Integer, nullable = False)
+    outgo = db.Column(db.Integer, nullable = False)
+    balance = db.Column(db.Integer, nullable = False)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
+    remark = db.Column(db.String(255), nullable = True)
+
+
+class ScoreRule(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'score_rule'
+
+    account = db.Column(db.String(20), primary_key = True)
+    name = db.Column(db.String(20), primary_key = True)
+    description = db.Column(db.String(20), nullable = True, index = True)
+    type = db.Column(db.String(20), nullable = False, index = True)
+    amount = db.Column(db.Integer, nullable = False)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
+    remark = db.Column(db.String(255), nullable = True)
+
+
+class ScoreRecord(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'score_record'
+
+    id = db.Column(db.Integer, primary_key = True, autoincrement = True)
+    account = db.Column(db.String(20), nullable = False, index = True)
+    trans_type = db.Column(db.String(20), nullable = False, index = True)
+    outgo_member_id = db.Column(db.String(20), nullable = False, index = True)
+    outgo_member_name = db.Column(db.String(20), nullable = False, index = True)
+    outgo_amount = db.Column(db.Integer, nullable = False)
+    income_member_id = db.Column(db.String(20), nullable = False, index = True)
+    income_member_name = db.Column(db.String(20), nullable = False, index = True)
+    income_amount = db.Column(db.Integer, nullable = False)
+    biz_type = db.Column(db.String(20), nullable = False, index = True)
+    date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now().date,
+                     index = True)
+    time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
+                     onupdate = lambda: datetime.time(get_now()),
+                     index = True)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    remark = db.Column(db.String(255), nullable = True)
+
+
+db.create_all()
+
+
+@cr.model('75-ScoreAccount')
+def get_ScoreAccount_model():
+    return ScoreAccount
+
+
+@cr.model('76-ScoreRule')
+def get_ScoreRule_model():
+    return ScoreRule
+
+
+@cr.model('30-ScoreMember')
+def get_ScoreMember_model():
+    return ScoreMember
+
+
+@cr.model('31-ScoreRecord')
+def get_ScoreRecord_model():
+    return ScoreRecord
+
+
+# View-----------------------------------------------------------------------------------------------------
+class ScoreAccountView(CVAdminModelView):
+    can_create = True
+    can_edit = True
+    can_delete = True
+    page_size = 100
+    column_filters = ('target', 'type', 'is_default', 'income', 'outgo', 'balance')
+    column_list = (
+        'botid', 'name', 'description', 'type', 'is_default', 'target', 'income', 'outgo', 'balance', 'create_at',
+        'update_at', 'remark')
+    column_searchable_list = ('name', 'description', 'remark')
+    column_labels = dict(botid = '机器人',
+                         name = '账户名',
+                         description = '账户描述',
+                         type = '账户类型',
+                         is_default = '缺省账户',
+                         target = '目标',
+                         income = '总收入',
+                         outgo = '总支出',
+                         balance = '余额',
+                         create_at = '创建时间',
+                         update_at = '更新时间',
+                         remark = '备注')
+    column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             target = lambda v, c, m, p: get_target_display(m.target),
+                             description = lambda v, c, m, p: get_omit_display(m.description),
+                             remark = lambda v, c, m, p: get_omit_display(m.remark),
+                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at),
+                             type = lambda v, c, m, p: get_acttype_display(m.type),
+                             is_default = lambda v, c, m, p: get_yesno_display(m.is_default))
+    form_columns = ('botid', 'name', 'description', 'type', 'is_default', 'target', 'remark')
+    form_create_rules = (
+        rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
+        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+        rules.FieldSet(('type', 'is_default'), '其他选项')
+    )
+    form_edit_rules = (
+        rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
+        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+        rules.FieldSet(('type', 'is_default'), '其他选项')
+    )
+
+    # form_choices = {'is_default': get_yesno_choice(),
+    #                 'type': get_acttype_choice()}
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '积分账户设置', '机器人设置')
+
+    def get_query(self):
+        from flask_login import current_user
+        if not current_user.is_admin():
+            return super(ScoreAccountView, self).get_query().filter(self.model.botid == current_user.username)
+        else:
+            return super(ScoreAccountView, self).get_query()
+
+    def get_count_query(self):
+        from flask_login import current_user
+        from flask_admin.contrib.sqla.view import func
+        if not current_user.is_admin():
+            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
+        else:
+            return super(ScoreAccountView, self).get_count_query()
+
+    def get_create_form(self):
+        form = self.scaffold_form()
+        delattr(form, 'target')
+        form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice())
+        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.is_default = fields.BooleanField('缺省账户')
+
+        def query_factory():
+            from flask_login import current_user
+            from common.bot import BotAssign
+            return [r.botid for r in BotAssign.find_by_user(current_user.username)]
+
+        def get_pk(obj):
+            return obj
+
+        def get_label(obj):
+            from common.bot import Bot
+            return Bot.find(obj).name
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
+                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+        return form
+
+    def get_edit_form(self):
+        form = self.scaffold_form()
+        # delattr(form, 'target')
+        form.target_type = fields.SelectField('目标类型', [validators.required(message = '目标类型是必填字段')],
+                                              coerce = str,
+                                              choices = get_target_type_choice())
+        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
+        form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.is_default = fields.BooleanField('缺省账户')
+
+        def query_factory():
+            return self.model.find_by_id()
+
+        return form
+
+    def on_model_change(self, form, model, is_created):
+        model.target = get_target_value(form.target_type.data, form.target_account.data)
+
+    def on_form_prefill(self, form, id):
+        target = self.model.find_by_id(id).target
+        form.target_account.data = target.replace(target[0:2], '')
+
+
+class ScoreMemberView(CVAdminModelView):
+    can_create = False
+    can_edit = False
+    can_delete = False
+    page_size = 100
+    column_filters = ('account', 'member_id', 'member_name', 'income', 'outgo', 'balance')
+    column_list = (
+        'account', 'member_id', 'member_name', 'income', 'outgo', 'balance')
+    column_searchable_list = ('member_name', 'remark')
+    column_labels = dict(account = '账户名',
+                         member_id = '成员账号',
+                         member_name = '成员名称',
+                         income = '总收入',
+                         outgo = '总支出',
+                         balance = '余额',
+                         create_at = '创建时间',
+                         remark = '备注')
+    column_formatters = dict(member_name = lambda v, c, m, p: get_omit_display(m.member_name),
+                             remark = lambda v, c, m, p: get_omit_display(m.remark))
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '成员积分', '积分管理')
+
+
+class ScoreRuleView(CVAdminModelView):
+    can_create = True
+    can_edit = True
+    can_delete = True
+    column_filters = ('account', 'name', 'type')
+    column_list = (
+        'account', 'name', 'description', 'type', 'amount', 'create_at', 'update_at', 'remark')
+    column_searchable_list = ('description', 'remark')
+    column_labels = dict(account = '账户名',
+                         name = '规则名',
+                         description = '描述',
+                         type = '类型',
+                         amount = '数量',
+                         create_at = '创建时间',
+                         update_at = '更新时间',
+                         remark = '备注')
+    column_formatters = dict(description = lambda v, c, m, p: get_omit_display(m.description),
+                             remark = lambda v, c, m, p: get_omit_display(m.remark),
+                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at),
+                             type = lambda v, c, m, p: get_acttype_display(m.type))
+    form_columns = ('account', 'name', 'description', 'type', 'amount', 'remark')
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '积分规则设置', '机器人设置')
+
+    def get_create_form(self):
+        form = self.scaffold_form()
+
+        def query_factory():
+            from flask_login import current_user
+            return [r.name for r in ScoreAccount.find_by_user(current_user.username)]
+
+        def get_pk(obj):
+            return obj
+
+        def get_label(obj):
+            return obj
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.account = QuerySelectField('账户名', [validators.required(message = '账户名是必填字段')],
+                                        query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+        form.name = fields.StringField('规则名', [validators.required(message = '规则名是必填字段')])
+        form.description = fields.StringField('描述')
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.amount = fields.StringField('数量', [validators.required(message = '数量是必填字段')])
+        form.remark = fields.StringField('备注')
+        return form
+
+    def get_edit_form(self):
+        form = self.scaffold_form()
+        form.account = fields.StringField('账户名', render_kw = {'readonly': True})
+        form.name = fields.StringField('规则名', render_kw = {'readonly': True})
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.description = fields.StringField('描述')
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.amount = fields.StringField('数量', [validators.required(message = '数量是必填字段')])
+        form.remark = fields.StringField('备注')
+        return form
+
+
+# todo 优化类型等显示
+# todo member考虑改为一个字段
+class ScoreRecordView(CVAdminModelView):
+    can_create = False
+    can_edit = False
+    can_delete = False
+    page_size = 100
+    column_filters = ('account', 'trans_type',
+                      'outgo_member_id', 'income_member_id',
+                      'outgo_amount', 'income_amount',
+                      'biz_type', 'date')
+    column_list = (
+        'account', 'trans_type',
+        'outgo_member_id', 'outgo_member_name', 'outgo_amount',
+        'income_member_id', 'income_member_name', 'income_amount',
+        'biz_type', 'date', 'time', 'remark')
+    column_searchable_list = ('outgo_member_name', 'income_member_name', 'remark')
+    column_labels = dict(account = '账户名',
+                         trans_type = '交易类型',
+                         outgo_member_id = '转出成员账号',
+                         outgo_member_name = '转出成员名称',
+                         outgo_amount = '转出数量',
+                         income_member_id = '转入成员账号',
+                         income_member_name = '转入成员名称',
+                         income_amount = '转入数量',
+                         biz_type = '来源类型',
+                         date = '日期',
+                         time = '时间',
+                         remark = '消息')
+    column_formatters = dict(target = lambda v, c, m, p: get_target_display(m.target),
+                             outgo_member_name = lambda v, c, m, p: get_omit_display(m.outgo_member_name),
+                             income_member_name = lambda v, c, m, p: get_omit_display(m.income_member_name),
+                             remark = lambda v, c, m, p: get_omit_display(m.remark))
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '积分记录', '积分管理')
+
+
+@cr.view('75-ScoreAccount')
+def get_ScoreAccount_view():
+    return ScoreAccountView
+
+
+@cr.view('76-ScoreRule')
+def get_ScoreRule_view():
+    return ScoreRuleView
+
+
+@cr.view('30-ScoreMember')
+def get_ScoreMember_view():
+    return ScoreMemberView
+
+
+@cr.view('31-ScoreRecord')
+def get_ScoreRecord_view():
+    return ScoreRecordView

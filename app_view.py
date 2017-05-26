@@ -1,3 +1,5 @@
+import warnings
+
 import flask_login as login
 from flask import redirect, request, url_for, render_template
 from flask_admin import Admin, AdminIndexView, expose, helpers
@@ -35,7 +37,7 @@ class CVAdminFileView(FileAdmin):
         else:
             return False
 
-
+# todo 支持oauth
 # Create customized index view class that handles login & registration
 class CVAdminIndexView(AdminIndexView):
     @expose('/')
@@ -68,7 +70,7 @@ class CVAdminIndexView(AdminIndexView):
         from common.login_control import RegistrationForm
         form = RegistrationForm(request.form)
         if helpers.validate_form_on_submit(form):
-            from common.login_model import User
+            from common.user import User
             user = User()
 
             form.populate_obj(user)
@@ -118,6 +120,8 @@ def init(app):
         id = view[0]
         model_class = models[id]()
         view_class = view[1]()
-        admin.add_view(view_class(model_class, db_control.get_db().session))
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'Fields missing from ruleset', UserWarning)
+            admin.add_view(view_class(model_class, db_control.get_db().session))
 
     admin.add_view(CVAdminFileView(get_db_dir(), '/data/db/', name='数据库文件', category='系统设置'))

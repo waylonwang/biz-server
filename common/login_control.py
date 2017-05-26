@@ -4,9 +4,9 @@ from werkzeug.security import check_password_hash
 from wtforms import form, validators, fields
 
 import db_control
-from common import login_model
+from common import user
 # Create the Flask-Principal's instance
-from common.login_model import User
+from common.user import User
 
 principals = Principal()
 
@@ -19,35 +19,44 @@ default_permission = Permission(RoleNeed('default'))
 
 # Define login and registration forms (for flask-login)
 class LoginForm(form.Form):
-    username = fields.StringField('用户名', validators=[validators.required()])
-    password = fields.PasswordField('密&nbsp;&nbsp;&nbsp;&nbsp;码', validators=[validators.required()])
+    username = fields.StringField('用户名', validators = [validators.required(message = '用户名是必填字段')])
+    password = fields.PasswordField('密&nbsp;&nbsp;&nbsp;&nbsp;码',
+                                    validators = [validators.required(message = '密码是必填字段')])
 
-    def validate(self):
+    def validate_username(self, field):
         user = self.get_user()
 
         if user is None:
-            raise validators.ValidationError('用户名错误')
+            raise validators.ValidationError(u'用户名错误')
+            # raise validators.ValidationError('Invalid user')
 
-        # we're comparing the plaintext pw with the the hash from the db
-        if not check_password_hash(user.password, self.password.data):
-            # to compare plain text passwords use
-            # if user.password != self.password.data:
-            raise validators.ValidationError('密码错误')
+        return True
+
+    def validate_password(self, field):
+        user = self.get_user()
+
+        if user is not None:
+            # we're comparing the plaintext pw with the the hash from the db
+            if not check_password_hash(user.password, self.password.data):
+                # to compare plain text passwords use
+                # if user.password != self.password.data:
+                raise validators.ValidationError(u'密码错误')
+                # raise validators.ValidationError('Invalid password')
 
         return True
 
     def get_user(self):
         # return login_model.User.find_user(self.username)
-        return db_control.get_db().session.query(login_model.User).filter_by(username=self.username.data).first()
+        return db_control.get_db().session.query(user.User).filter_by(username = self.username.data).first()
 
 
 class RegistrationForm(form.Form):
-    username = fields.StringField(validators=[validators.required()])
+    username = fields.StringField(validators = [validators.required()])
     email = fields.StringField()
-    password = fields.PasswordField(validators=[validators.required()])
+    password = fields.PasswordField(validators = [validators.required()])
 
     def validate_login(self, field):
-        if db_control.get_db().session.query(login_model.User).filter_by(username=self.username.data).count() > 0:
+        if db_control.get_db().session.query(user.User).filter_by(username = self.username.data).count() > 0:
             raise validators.ValidationError('Duplicate username')
 
 
@@ -63,7 +72,7 @@ def init(app):
     @login_manager.user_loader
     def load_user(username):
         # Return an instance of the User model
-        return User.find_user(username=username)
+        return User.find_by_name(username = username)
 
     @identity_loaded.connect_via(app)
     def on_identity_loaded(sender, identity):

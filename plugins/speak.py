@@ -1,13 +1,15 @@
 import re
 from datetime import datetime
 
+from flask_admin.form import rules
 from flask_restful import reqparse, Resource
-from pytz import utc, timezone
 from sqlalchemy import func, desc, case
+from wtforms import validators, fields
 
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
+from common.util import get_now, display_datetime, get_botname, get_target_prefix, get_target_value, get_omit_display
 from plugin import PluginsRegistry
 
 __registry__ = cr = PluginsRegistry()
@@ -26,29 +28,33 @@ class Speak(db.Model):
     target = db.Column(db.String(20), nullable = False)
     sender_id = db.Column(db.String(20), nullable = False)
     sender_name = db.Column(db.String(20), nullable = False)
-    date = db.Column(db.String(20), nullable = False)
-    time = db.Column(db.String(20), nullable = False)
-    timemark = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
+    # date = db.Column(db.String(20), nullable = False)
+    # time = db.Column(db.String(20), nullable = False)
+    # create_at = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
+    date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now().date,
+                     index = True)
+    time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
+                     onupdate = lambda: datetime.time(get_now()),
+                     index = True)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     message = db.Column(db.String(20), nullable = False)
     washed_text = db.Column(db.String(20), nullable = False)
     washed_chars = db.Column(db.Integer, nullable = False)
 
-    target_map = {'group': 'g', 'discuzz': 'd', 'private': 'p'}
-
     @staticmethod
     def create(botid, target_type, target_account, sender_id, message, **kwargs):
-        target = Speak.target_map.get(target_type) + '#' + target_account
+        target = get_target_value(target_type, target_account)
         washed_text = SpeakWash.do(botid, message)
         record = Speak(botid = botid,
                        target = target,
                        sender_id = sender_id,
                        sender_name = '' if kwargs.get('sender_name') == None else kwargs.get('sender_name'),
-                       date = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%Y-%m-%d') if kwargs.get(
-                           'date') == None else kwargs.get('date'),
-                       time = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%H:%M') if kwargs.get(
-                           'time') == None else kwargs.get('time'),
-                       timemark = int(datetime.now(tz = utc).timestamp()) if kwargs.get(
-                           'timemark') == None else kwargs.get('timemark'),
+                       # date = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%Y-%m-%d') if kwargs.get(
+                       #     'date') is None else kwargs.get('date'),
+                       # time = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%H:%M') if kwargs.get(
+                       #     'time') is None else kwargs.get('time'),
+                       # create_at = int(datetime.now(tz = utc).timestamp()) if kwargs.get(
+                       #     'create_at') is None else kwargs.get('create_at'),
                        message = message,
                        washed_text = washed_text,
                        washed_chars = len(washed_text))
@@ -77,7 +83,7 @@ class Speak(db.Model):
 
     @staticmethod
     def find_by_date(botid, target_type, target_account, date_from, date_to):
-        target = Speak.target_map.get(target_type) + '#' + target_account
+        target = get_target_value(target_type, target_account)
         return Speak.query.filter(Speak.botid == botid,
                                   Speak.target == target,
                                   Speak.date >= date_from,
@@ -97,7 +103,7 @@ class Speak(db.Model):
 
     @staticmethod
     def get_top(botid, target_type, target_account, date_from, date_to, limit = 10, is_valid = False):
-        target = Speak.target_map.get(target_type) + '#' + target_account
+        target = get_target_value(target_type, target_account)
         baseline = 0
         if is_valid:
             from plugins.setting import BotParam
@@ -121,7 +127,7 @@ class Speak(db.Model):
 
     @staticmethod
     def get_count(botid, target_type, target_account, date_from, date_to, sender = None):
-        target = Speak.target_map.get(target_type) + '#' + target_account
+        target = get_target_value(target_type, target_account)
         baseline = 0
         from plugins.setting import BotParam
         param = BotParam.find(botid, 'baseline')
@@ -148,6 +154,8 @@ class Speak(db.Model):
         ).first()
 
 
+# todo edit form优化状态显示
+# todo 支持create
 class SpeakWash(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'speak_wash'
@@ -157,8 +165,8 @@ class SpeakWash(db.Model):
     rule = db.Column(db.String(200), nullable = False)
     replace = db.Column(db.String(200), nullable = False)
     status = db.Column(db.Integer, nullable = False)
-    createtime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
-    updatetime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
 
     @staticmethod
@@ -169,8 +177,6 @@ class SpeakWash(db.Model):
                              rule = rule,
                              replace = replace,
                              status = 1,
-                             createtime = int(datetime.now(tz = utc).timestamp()),
-                             updatetime = int(datetime.now(tz = utc).timestamp()),
                              remark = remark)
             wash.query.session.add(wash)
             wash.query.session.commit()
@@ -211,6 +217,7 @@ class SpeakWash(db.Model):
         return text
 
 
+# todo 实现计划调度自动计算speak count
 class SpeakCount(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'speak_count'
@@ -253,26 +260,26 @@ class SpeakView(CVAdminModelView):
     column_list = (
         'botid', 'target', 'sender_id', 'sender_name', 'date', 'time', 'message', 'washed_text', 'washed_chars')
     column_searchable_list = ('sender_name', 'message')
-    column_labels = dict(botid = '机器人ID', target = '目标',
+    column_labels = dict(botid = '机器人', target = '目标',
                          sender_id = '发送者QQ', sender_name = '发送者名称',
                          date = '日期', time = '时间',
                          message = '消息原文', washed_text = '有效消息内容', washed_chars = '有效消息字数')
-    # column_formatters = dict(date=lambda v, c, m, p: datetime.fromtimestamp(m.createtime).strftime('%Y-%m-%d'),
-    #                          time=lambda v, c, m, p: datetime.fromtimestamp(m.updatetime).strftime('%Y-%m-%d'))
-    column_formatters = dict(target = lambda v, c, m, p: _format_target(m.target),
-                             sender_name = lambda v, c, m, p: str(m.sender_name)[0:10] + '...' if len(
-                                 str(m.sender_name)) > 10 else str(m.sender_name)[0:10],
-                             message = lambda v, c, m, p: str(m.message)[0:10] + '...' if len(
-                                 str(m.message)) > 10 else str(m.message)[0:10],
-                             washed_text = lambda v, c, m, p: str(m.washed_text)[0:10] + '...' if len(
-                                 str(m.washed_text)) > 10 else str(m.washed_text)[0:10])
+    # column_formatters = dict(date=lambda v, c, m, p: datetime.fromtimestamp(m.create_at).strftime('%Y-%m-%d'),
+    #                          time=lambda v, c, m, p: datetime.fromtimestamp(m.update_at).strftime('%Y-%m-%d'))
+    column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             target = lambda v, c, m, p: _format_target(m.target),
+                             sender_name = lambda v, c, m, p: get_omit_display(m.sender_name),
+                             date = lambda v, c, m, p: display_datetime(m.create_at,False),
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
+                             message = lambda v, c, m, p: get_omit_display(m.message),
+                             washed_text = lambda v, c, m, p: get_omit_display(m.washed_text))
 
     def __init__(self, model, session):
-        CVAdminModelView.__init__(self, model, session, '消息记录')
+        CVAdminModelView.__init__(self, model, session, '消息记录', '消息管理')
 
     def get_query(self):
         from flask_login import current_user
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return super(SpeakView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(SpeakView, self).get_query()
@@ -280,7 +287,7 @@ class SpeakView(CVAdminModelView):
     def get_count_query(self):
         from flask_login import current_user
         from flask_admin.contrib.sqla.view import func
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(SpeakView, self).get_count_query()
@@ -288,18 +295,29 @@ class SpeakView(CVAdminModelView):
 
 class SpeakWashView(CVAdminModelView):
     column_filters = ('status',)
-    column_labels = dict(id = '规则ID', botid = '机器人ID', rule = '匹配规则', replace = '清洗结果', status = '状态',
-                         createtime = '创建时间', updatetime = '更新时间', remark = '备注')
-    column_formatters = dict(status = lambda v, c, m, p: '启用' if m.status == 1 else '禁用',
-                             createtime = lambda v, c, m, p: datetime.fromtimestamp(m.createtime).strftime('%Y-%m-%d'),
-                             updatetime = lambda v, c, m, p: datetime.fromtimestamp(m.updatetime).strftime('%Y-%m-%d'))
+    column_labels = dict(id = '规则ID', botid = '机器人', rule = '匹配规则', replace = '清洗结果', status = '状态',
+                         create_at = '创建时间', update_at = '更新时间', remark = '备注')
+    column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             status = lambda v, c, m, p: '启用' if m.status == 1 else '禁用',
+                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at))
+
+    form_create_rules = (
+        rules.FieldSet(('botid', 'active', 'remark'), '基本信息'),
+        rules.FieldSet(('rule', 'replace'), '规则设置')
+    )
+
+    form_edit_rules = (
+        rules.FieldSet(('botid', 'active', 'remark'), '基本信息'),
+        rules.FieldSet(('rule', 'replace'), '规则设置')
+    )
 
     def __init__(self, model, session):
-        CVAdminModelView.__init__(self, model, session, '发言清洗', '机器人设置')
+        CVAdminModelView.__init__(self, model, session, '发言清洗规则', '机器人设置')
 
     def get_query(self):
         from flask_login import current_user
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return super(SpeakWashView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(SpeakWashView, self).get_query()
@@ -307,28 +325,46 @@ class SpeakWashView(CVAdminModelView):
     def get_count_query(self):
         from flask_login import current_user
         from flask_admin.contrib.sqla.view import func
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(SpeakWashView, self).get_count_query()
+
+    def get_create_form(self):
+        form = self.scaffold_form()
+        form.botid = fields.StringField('机器人ID', [validators.required(message = '机器人ID是必填字段')])
+        form.rule = fields.StringField('匹配规则', [validators.required(message = '匹配规则是必填字段')])
+        form.replace = fields.StringField('清洗结果', [validators.required(message = '清洗结果是必填字段')])
+        form.active = fields.BooleanField('启用状态')
+        form.remark = fields.StringField('备注')
+        return form
+
+    def get_edit_form(self):
+        form = self.scaffold_form()
+        form.botid = fields.StringField('机器人ID', [validators.required(message = '机器人ID是必填字段')])
+        form.rule = fields.StringField('匹配规则', [validators.required(message = '匹配规则是必填字段')])
+        form.replace = fields.StringField('清洗结果', [validators.required(message = '清洗结果是必填字段')])
+        form.active = fields.BooleanField('启用状态')
+        form.remark = fields.StringField('备注')
+        return form
 
 
 class SpeakCountView(CVAdminModelView):
     column_filters = ('sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
     column_list = ('botid', 'target', 'sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
-    column_labels = dict(botid = '机器人ID', target = '目标', sender_id = '发送者QQ', sender_name = '发送者名称',
+    column_labels = dict(botid = '机器人', target = '目标', sender_id = '发送者QQ', sender_name = '发送者名称',
                          date = '日期', message_count = '消息总数', vaild_count = '有效消息总数')
     column_formatters = dict(
-        sender_name = lambda v, c, m, p: str(m.sender_name)[0:10] + '...' if len(str(m.sender_name)) > 10 else str(
-            m.sender_name)[0:10],
-        date = lambda v, c, m, p: datetime.fromtimestamp(m.createtime).strftime('%Y-%m-%d'))
+        botid = lambda v, c, m, p: get_botname(m.botid),
+        sender_name = lambda v, c, m, p: get_omit_display(m.sender_name),
+        date = lambda v, c, m, p: datetime.fromtimestamp(m.create_at).strftime('%Y-%m-%d'))
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '发言统计', '统计分析')
 
     def get_query(self):
         from flask_login import current_user
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return super(SpeakCountView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(SpeakCountView, self).get_query()
@@ -336,7 +372,7 @@ class SpeakCountView(CVAdminModelView):
     def get_count_query(self):
         from flask_login import current_user
         from flask_admin.contrib.sqla.view import func
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(SpeakCountView, self).get_count_query()
@@ -374,7 +410,7 @@ class SpeakRecordAPI(Resource):
             parser.add_argument('sender_name')
             parser.add_argument('date')
             parser.add_argument('time')
-            parser.add_argument('timemark')
+            parser.add_argument('create_at')
             parser.add_argument('message', required = True, help = '请求中必须包含message')
             args = parser.parse_args()
             record = Speak.create(ac.get_bot(),
@@ -382,10 +418,7 @@ class SpeakRecordAPI(Resource):
                                   args['target_account'],
                                   args['sender_id'],
                                   args['message'],
-                                  sender_name = args['sender_name'],
-                                  date = args['date'],
-                                  time = args['time'],
-                                  timemark = args['timemark'])
+                                  sender_name = args['sender_name'])
             if record is not None:
                 return ac.success(botid = record.botid,
                                   target = record.target,
@@ -393,7 +426,7 @@ class SpeakRecordAPI(Resource):
                                   sender_name = record.sender_name,
                                   date = record.date,
                                   time = record.time,
-                                  timemark = record.timemark,
+                                  create_at = record.create_at,
                                   message = record.message,
                                   washed_text = record.washed_text,
                                   washed_chars = record.washed_chars)
@@ -415,8 +448,8 @@ class SpeakWashsAPI(Resource):
                                'rule': rule.rule,
                                'replace': rule.replace,
                                'status': rule.status,
-                               'createtime': rule.createtime,
-                               'updatetime': rule.updatetime,
+                               'create_at': rule.create_at,
+                               'update_at': rule.update_at,
                                'remark': rule.remark})
             return ac.success(rules = result)
         except Exception as e:
@@ -439,8 +472,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  createtime = rule.createtime,
-                                  updatetime = rule.updatetime,
+                                  create_at = rule.create_at,
+                                  update_at = rule.update_at,
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -465,8 +498,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  createtime = rule.createtime,
-                                  updatetime = rule.updatetime,
+                                  create_at = rule.create_at,
+                                  update_at = rule.update_at,
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -484,8 +517,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  createtime = rule.createtime,
-                                  updatetime = rule.updatetime,
+                                  create_at = rule.create_at,
+                                  update_at = rule.update_at,
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -520,7 +553,7 @@ class SpeakWashDoAPI(Resource):
                                   sender_name = record.sender_name,
                                   date = record.date,
                                   time = record.time,
-                                  timemark = record.timemark,
+                                  create_at = record.create_at,
                                   message = record.message,
                                   washed_text = record.washed_text,
                                   washed_chars = record.washed_chars)

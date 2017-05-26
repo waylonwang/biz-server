@@ -1,5 +1,6 @@
 import os
 
+import sqlalchemy
 from flask_babelex import Babel
 from flask_sqlalchemy import SQLAlchemy
 
@@ -34,7 +35,7 @@ def get_db():
     return _db
 
 
-def _get_db_binds():
+def _get_db_binds() -> dict:
     binds = config().get('db_binds', {})
     db_binds = {}
     for (k, v) in binds.items():

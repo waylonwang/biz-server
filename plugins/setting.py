@@ -7,13 +7,18 @@
 """
 from datetime import datetime
 
+from flask_admin.form import rules
 from flask_restful import reqparse, Resource
 from pytz import utc
+from wtforms import validators, fields
 
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
+from common.bot import Bot
 from plugin import PluginsRegistry
+from common.util import get_now, display_datetime, get_botname, get_target_display, get_target_type_choice,\
+    get_target_value
 
 __registry__ = cr = PluginsRegistry()
 
@@ -21,15 +26,14 @@ __registry__ = cr = PluginsRegistry()
 db = db_control.get_db()
 api = ac.get_api()
 
-
 class BotParam(db.Model):
     __bind_key__ = 'score'
-    __tablename__ = 'sys_params'
+    __tablename__ = 'bot_param'
     botid = db.Column(db.String(20), primary_key = True)
     name = db.Column(db.String(20), primary_key = True)
     value = db.Column(db.String(100), nullable = False)
-    createtime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
-    updatetime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
 
     @staticmethod
@@ -39,8 +43,6 @@ class BotParam(db.Model):
             param = BotParam(botid = botid,
                              name = name,
                              value = value,
-                             createtime = int(datetime.now(tz = utc).timestamp()),
-                             updatetime = int(datetime.now(tz = utc).timestamp()),
                              remark = remark if remark else '')
             param.query.session.add(param)
             param.query.session.commit()
@@ -53,7 +55,6 @@ class BotParam(db.Model):
         param = BotParam.find(botid, name)
         if param:
             param.value = value
-            param.updatetime = int(datetime.now(tz = utc).timestamp())
             if remark:  param.remark = remark
             param.query.session.commit()
         return param
@@ -72,16 +73,15 @@ class BotParam(db.Model):
         BotParam.query.session.commit()
         return True
 
-
 class TargetRule(db.Model):
     __bind_key__ = 'score'
-    __tablename__ = 'target_list'
+    __tablename__ = 'target_rule'
     id = db.Column(db.Integer, primary_key = True, autoincrement = True)
     botid = db.Column(db.String(20), nullable = False)
     type = db.Column(db.String(10), nullable = False)
     target = db.Column(db.String(100), nullable = False)
-    createtime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
-    updatetime = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
 
     @staticmethod
@@ -91,8 +91,6 @@ class TargetRule(db.Model):
             rule = TargetRule(botid = botid,
                               type = type,
                               target = target,
-                              createtime = int(datetime.now(tz = utc).timestamp()),
-                              updatetime = int(datetime.now(tz = utc).timestamp()),
                               remark = remark if remark else '')
             rule.query.session.add(rule)
             rule.query.session.commit()
@@ -108,6 +106,10 @@ class TargetRule(db.Model):
     @staticmethod
     def find(botid, type, target):
         return TargetRule.query.filter_by(botid = botid, type = type, target = target).first()
+
+    @staticmethod
+    def find_by_id(id):
+        return TargetRule.query.get(id)
 
     @staticmethod
     def delete(botid, type, target):
@@ -133,11 +135,12 @@ def get_targetrule_model():
 class BotParamView(CVAdminModelView):
     column_display_pk = True
     column_filters = ('name',)
-    column_labels = dict(botid = '机器人ID', name = '参数名', value = '参数值', createtime = '创建时间', updatetime = '更新时间',
+    column_labels = dict(botid = '机器人', name = '参数名', value = '参数值', create_at = '创建时间', update_at = '更新时间',
                          remark = '备注')
     column_formatters = dict(
-        createtime = lambda v, c, m, p: datetime.fromtimestamp(m.createtime).strftime('%Y-%m-%d'),
-        updatetime = lambda v, c, m, p: datetime.fromtimestamp(m.updatetime).strftime('%Y-%m-%d'))
+        botid = lambda v, c, m, p: get_botname(m.botid),
+        create_at = lambda v, c, m, p: display_datetime(m.create_at),
+        update_at = lambda v, c, m, p: display_datetime(m.update_at))
     form_columns = ('value', 'remark')
 
     # from login.login_control import admin_permission
@@ -160,7 +163,7 @@ class BotParamView(CVAdminModelView):
 
     def get_query(self):
         from flask_login import current_user
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return super(BotParamView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(BotParamView, self).get_query()
@@ -171,51 +174,48 @@ class BotParamView(CVAdminModelView):
     def get_count_query(self):
         from flask_login import current_user
         from flask_admin.contrib.sqla.view import func
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(BotParamView, self).get_count_query()
             # if self.session.query(self.model) != None:
             # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
 
-
 class TargetRuleView(CVAdminModelView):
+
+    __type_list = {'allow': '允许', 'block': '拒绝'}
+
     can_create = True
     can_edit = True
     can_delete = True
 
     column_filters = ('type',)
-    column_labels = dict(id = 'ID', botid = '机器人ID', type = '类型', target = '目标', createtime = '创建时间',
-                         updatetime = '更新时间',
+    column_labels = dict(id = 'ID', botid = '机器人', type = '类型', target = '目标', create_at = '创建时间',
+                         update_at = '更新时间',
                          remark = '备注')
     column_formatters = dict(
-        createtime = lambda v, c, m, p: datetime.fromtimestamp(m.createtime).strftime('%Y-%m-%d'),
-        updatetime = lambda v, c, m, p: datetime.fromtimestamp(m.updatetime).strftime('%Y-%m-%d'))
-    # column_type_formatters = MY_DEFAULT_FORMATTERS
-    form_columns = ('type', 'target', 'remark')
-    form_args = dict(
-        # createtime = dict(validators=[DataRequired()], format='%Y-%m-%d'),
-        # updatetime = dict(validators=[DataRequired()], format='%Y-%m-%d')
+        create_at = lambda v, c, m, p: display_datetime(m.create_at),
+        update_at = lambda v, c, m, p: display_datetime(m.update_at),
+        type = lambda v, c, m, p: v.__type_list[m.type],
+        target = lambda v, c, m, p: get_target_display(m.target),
+        botid = lambda v, c, m, p: get_botname(m.botid)
     )
-    form_edit_rules = ('type', 'target', 'remark')
-    form_create_rules = ('type', 'target', 'remark')
-    form_widget_args = {
-        'createtime': {
-            'disabled': True,
-            'data-date-format': u'YYYY-MM-DD'
-        },
-        'updatetime': {
-            'disabled': True,
-            'data-date-format': u'YYYY-MM-DD'
-        }
-    }
+
+    form_create_rules = (
+        rules.FieldSet(('botid', 'type', 'remark'), '基本信息'),
+        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+    )
+    form_edit_rules = (
+        rules.FieldSet(('botid', 'type', 'remark'), '基本信息'),
+        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+    )
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '拦截与放行', '机器人设置')
 
     def get_query(self):
         from flask_login import current_user
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return super(TargetRuleView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(TargetRuleView, self).get_query()
@@ -223,11 +223,60 @@ class TargetRuleView(CVAdminModelView):
     def get_count_query(self):
         from flask_login import current_user
         from flask_admin.contrib.sqla.view import func
-        if current_user.username != 'admin':
+        if not current_user.is_admin():
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(TargetRuleView, self).get_count_query()
 
+    def get_create_form(self):
+        form = self.scaffold_form()
+        delattr(form, 'target')
+        form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice())
+        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
+        form.type = fields.SelectField('类型', [validators.required(message = '类型是必填字段')],
+                                       coerce = str, choices = self.__type_list.items())
+
+        def query_factory():
+            from flask_login import current_user
+            from common.bot import BotAssign
+            return [r.botid for r in BotAssign.find_by_user(current_user.username)]
+
+        def get_pk(obj):
+            return obj
+
+        def get_label(obj):
+            return Bot.find(obj).name
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
+                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+        return form
+
+    def get_edit_form(self):
+        form = self.scaffold_form()
+        # delattr(form, 'target')
+        form.target_type = fields.SelectField('目标类型', [validators.required(message = '目标类型是必填字段')],
+                                              coerce = str,
+                                              choices = get_target_type_choice())
+        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
+        form.type = fields.SelectField('类型', [validators.required(message = '类型是必填字段')],
+                                       coerce = str,
+                                       choices = self.__type_list.items())
+        form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+        def query_factory():
+            from flask_login import current_user
+            from common.bot import BotAssign
+            return self.model.find_by_id()
+
+        return form
+
+    def on_model_change(self, form, model, is_created):
+        model.target = get_target_value(form.target_type.data,form.target_account.data)
+
+    def on_form_prefill(self, form, id):
+        # form.botid.label =  Bot.find(form.botid.data).name
+        target = self.model.find_by_id(id).target
+        form.target_account.data = target.replace(target[0:2],'')
 
 @cr.view('71-BotParam')
 def get_botparam_view():
@@ -251,8 +300,8 @@ class BotParamsAPI(Resource):
                 result.append({'botid': param.botid,
                                'name': param.name,
                                'value': param.value,
-                               'createtime': param.createtime,
-                               'updatetime': param.updatetime,
+                               'create_at': param.create_at,
+                               'update_at': param.update_at,
                                'remark': param.remark})
             return ac.success(params = result)
         except Exception as e:
@@ -274,8 +323,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  createtime = param.createtime,
-                                  updatetime = param.updatetime,
+                                  create_at = param.create_at,
+                                  update_at = param.update_at,
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -293,8 +342,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  createtime = param.createtime,
-                                  updatetime = param.updatetime,
+                                  create_at = param.create_at,
+                                  update_at = param.update_at,
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -311,8 +360,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  createtime = param.createtime,
-                                  updatetime = param.updatetime,
+                                  create_at = param.create_at,
+                                  update_at = param.update_at,
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -341,8 +390,8 @@ def get_targetrules(type):
             result.append({'botid': rule.botid,
                            'type': rule.type,
                            'target': rule.target,
-                           'createtime': rule.createtime,
-                           'updatetime': rule.updatetime,
+                           'create_at': rule.create_at,
+                           'update_at': rule.update_at,
                            'remark': rule.remark})
         return ac.success(params = result)
     except Exception as e:
@@ -360,8 +409,8 @@ def put_targetlist(type, target_type):
             return ac.success(botid = rule.botid,
                               type = rule.type,
                               target = rule.target,
-                              createtime = rule.createtime,
-                              updatetime = rule.updatetime,
+                              create_at = rule.create_at,
+                              update_at = rule.update_at,
                               remark = rule.remark)
         else:
             return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -379,8 +428,8 @@ def get_targetrule(type, target_type):
             return ac.success(botid = rule.botid,
                               type = rule.type,
                               target = rule.target,
-                              createtime = rule.createtime,
-                              updatetime = rule.updatetime,
+                              create_at = rule.create_at,
+                              update_at = rule.update_at,
                               remark = rule.remark)
         else:
             return ac.fault(

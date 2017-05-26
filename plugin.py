@@ -5,7 +5,7 @@ import sys
 
 from env import get_plugin_dir
 
-
+# todo 直接支持类注册器
 class PluginsRegistry:
     """
     Represent a map of plugins and functions.
@@ -68,14 +68,16 @@ hub = PluginsHub()
 def _init_mod(mod,app):
     mod_name = mod.__name__.split('.')[1]
     try:
-        mod.init(app)
+        if hasattr(mod, "init") :
+            mod.init(app)
     except:
         print('Failed to init plugin module "' + mod_name + '.py".', file=sys.stderr)
 
 def _add_registry_mod_cb(mod):
     mod_name = mod.__name__.split('.')[1]
     try:
-        hub.add_registry(mod_name, mod.__registry__)
+        if hasattr(mod, "__registry__"):
+            hub.add_registry(mod_name, mod.__registry__)
     except AttributeError:
         print('Failed to load plugin module "' + mod_name + '.py".', file=sys.stderr)
 
