@@ -9,16 +9,16 @@ from wtforms import validators, fields
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, display_datetime, get_botname, get_target_prefix, get_target_value, get_omit_display
+from common.util import get_now, display_datetime, get_botname, get_target_value, get_omit_display, get_target_display
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
-api = ac.get_api()
 
 
+@pr.register_model(10)
 class Speak(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'speak'
@@ -156,6 +156,7 @@ class Speak(db.Model):
 
 # todo edit form优化状态显示
 # todo 支持create
+@pr.register_model(73)
 class SpeakWash(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'speak_wash'
@@ -218,6 +219,7 @@ class SpeakWash(db.Model):
 
 
 # todo 实现计划调度自动计算speak count
+@pr.register_model(40)
 class SpeakCount(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'speak_count'
@@ -235,22 +237,8 @@ class SpeakCount(db.Model):
 db.create_all()
 
 
-@cr.model('10-Speak')
-def get_Speak_model():
-    return Speak
-
-
-@cr.model('73-SpeakWash')
-def get_SpeakWash_model():
-    return SpeakWash
-
-
-@cr.model('40-SpeakCount')
-def get_SpeakCount_model():
-    return SpeakCount
-
-
 # View-----------------------------------------------------------------------------------------------------
+@pr.register_view()
 class SpeakView(CVAdminModelView):
     can_create = False
     can_edit = False
@@ -267,9 +255,9 @@ class SpeakView(CVAdminModelView):
     # column_formatters = dict(date=lambda v, c, m, p: datetime.fromtimestamp(m.create_at).strftime('%Y-%m-%d'),
     #                          time=lambda v, c, m, p: datetime.fromtimestamp(m.update_at).strftime('%Y-%m-%d'))
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
-                             target = lambda v, c, m, p: _format_target(m.target),
+                             target = lambda v, c, m, p: get_target_display(m.target),
                              sender_name = lambda v, c, m, p: get_omit_display(m.sender_name),
-                             date = lambda v, c, m, p: display_datetime(m.create_at,False),
+                             date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'),
                              message = lambda v, c, m, p: get_omit_display(m.message),
                              washed_text = lambda v, c, m, p: get_omit_display(m.washed_text))
@@ -293,6 +281,7 @@ class SpeakView(CVAdminModelView):
             return super(SpeakView, self).get_count_query()
 
 
+@pr.register_view()
 class SpeakWashView(CVAdminModelView):
     column_filters = ('status',)
     column_labels = dict(id = '规则ID', botid = '机器人', rule = '匹配规则', replace = '清洗结果', status = '状态',
@@ -349,6 +338,7 @@ class SpeakWashView(CVAdminModelView):
         return form
 
 
+@pr.register_view()
 class SpeakCountView(CVAdminModelView):
     column_filters = ('sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
     column_list = ('botid', 'target', 'sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
@@ -378,26 +368,8 @@ class SpeakCountView(CVAdminModelView):
             return super(SpeakCountView, self).get_count_query()
 
 
-@cr.view('10-Speak')
-def get_Speak_view():
-    return SpeakView
-
-
-@cr.view('73-SpeakWash')
-def get_SpeakWash_view():
-    return SpeakWashView
-
-
-@cr.view('40-SpeakCount')
-def get_SpeakCount_view():
-    return SpeakCountView
-
-
-def _format_target(text):
-    return text.replace('g#', '群:').replace('d#', '组:').replace('p#', '单聊:')
-
-
 # Control--------------------------------------------------------------------------------------------------
+@ac.register_api('/speakrecord', endpoint = 'speakrecord')
 class SpeakRecordAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -436,6 +408,7 @@ class SpeakRecordAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speakwashs', endpoint = 'speakwashs')
 class SpeakWashsAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -448,14 +421,15 @@ class SpeakWashsAPI(Resource):
                                'rule': rule.rule,
                                'replace': rule.replace,
                                'status': rule.status,
-                               'create_at': rule.create_at,
-                               'update_at': rule.update_at,
+                               'create_at': rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                               'update_at': rule.update_at.strftime('%Y-%m-%d %H:%M'),
                                'remark': rule.remark})
             return ac.success(rules = result)
         except Exception as e:
             return ac.fault(error = e)
 
 
+@ac.register_api('/speakwash', endpoint = 'speakwash')
 class SpeakWashAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -472,8 +446,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  create_at = rule.create_at,
-                                  update_at = rule.update_at,
+                                  create_at = rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = rule.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -498,8 +472,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  create_at = rule.create_at,
-                                  update_at = rule.update_at,
+                                  create_at = rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = rule.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -517,8 +491,8 @@ class SpeakWashAPI(Resource):
                                   rule = rule.rule,
                                   replace = rule.replace,
                                   status = rule.status,
-                                  create_at = rule.create_at,
-                                  update_at = rule.update_at,
+                                  create_at = rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = rule.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = rule.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -539,6 +513,7 @@ class SpeakWashAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speakwashdo', endpoint = 'speakwashdo')
 class SpeakWashDoAPI(Resource):
     def patch(self):
         try:
@@ -563,6 +538,7 @@ class SpeakWashDoAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speakwashupdate', endpoint = 'speakwashupdate')
 class SpeakWashUpdateAPI(Resource):
     def patch(self):
         try:
@@ -585,6 +561,7 @@ class SpeakWashUpdateAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speaktop', endpoint = 'speaktop')
 class SpeakTopAPI(Resource):
     def get(self):
         try:
@@ -619,6 +596,7 @@ class SpeakTopAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speakcount', endpoint = 'speakcount')
 class SpeakCountAPI(Resource):
     def get(self):
         try:
@@ -648,6 +626,7 @@ class SpeakCountAPI(Resource):
             return ac.fault(error = e)
 
 
+@ac.register_api('/speaktotal', endpoint = 'speaktotal')
 class SpeakTotalAPI(Resource):
     def get(self):
         try:
@@ -672,13 +651,3 @@ class SpeakTotalAPI(Resource):
                                   count_valid = record.cnt_valid if record.cnt_valid is not None else 0)
         except Exception as e:
             return ac.fault(error = e)
-
-
-api.add_resource(SpeakRecordAPI, '/speakrecord', endpoint = 'speakrecord')
-api.add_resource(SpeakWashsAPI, '/speakwashs', endpoint = 'speakwashs')
-api.add_resource(SpeakWashAPI, '/speakwash', endpoint = 'speakwash')
-api.add_resource(SpeakWashDoAPI, '/speakwashdo', endpoint = 'speakwashdo')
-api.add_resource(SpeakWashUpdateAPI, '/speakwashupdate', endpoint = 'speakwashupdate')
-api.add_resource(SpeakTopAPI, '/speaktop', endpoint = 'speaktop')
-api.add_resource(SpeakCountAPI, '/speakcount', endpoint = 'speakcount')
-api.add_resource(SpeakTotalAPI, '/speaktotal', endpoint = 'speaktotal')

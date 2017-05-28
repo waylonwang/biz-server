@@ -1,17 +1,17 @@
 import flask_login as login
 from flask import url_for
 from flask_admin.form import rules
+from markupsafe import Markup
 from werkzeug.security import generate_password_hash
 from wtforms import validators, fields
 from wtforms.validators import DataRequired
-from markupsafe import Markup
 
 import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, display_datetime, get_yesno_display
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
@@ -21,6 +21,7 @@ users_roles = db.Table('users_roles',
                        db.Column('role_id', db.String(45), db.ForeignKey('roles.id')))
 
 
+@pr.register_model(91)
 class Role(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'roles'
@@ -52,6 +53,7 @@ class Role(db.Model):
 
 
 # Create user model.
+@pr.register_model(92)
 class User(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'users'
@@ -149,18 +151,9 @@ def create_test_data():
 db.create_all()
 
 
-@cr.model('91-Role')
-def get_role_model():
-    return Role
-
-
-@cr.model('92-User')
-def get_user_model():
-    return User
-
-
 # View-----------------------------------------------------------------------------------------------------
 # todo 重置密码提取到list中定制化action
+@pr.register_view()
 class UserView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -233,6 +226,7 @@ class UserView(CVAdminModelView):
 
 
 # todo 改造form中的user子面板
+@pr.register_view()
 class RoleView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -252,7 +246,7 @@ class RoleView(CVAdminModelView):
         if cnt is not None:
             return Markup(
                 u"<a href= '%s'>%s</a>" % (
-                    url_for('user.index_view',flt1_0 = model.name),
+                    url_for('user.index_view', flt1_0 = model.name),
                     cnt[0]
                 )
             )
@@ -273,13 +267,3 @@ class RoleView(CVAdminModelView):
             return login.current_user.is_authenticated
         else:
             return False
-
-
-@cr.view('91-Role')
-def get_role_view():
-    return RoleView
-
-
-@cr.view('92-User')
-def get_user_view():
-    return UserView

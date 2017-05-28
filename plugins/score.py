@@ -3,20 +3,19 @@ from datetime import datetime
 from flask_admin.form import rules
 from wtforms import validators, fields
 
-import api_control as ac
 import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
     get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
-api = ac.get_api()
 
 
+@pr.register_model(75)
 class ScoreAccount(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'score_account'
@@ -45,6 +44,7 @@ class ScoreAccount(db.Model):
         return ScoreAccount.query.filter_by(botid = id.split(',')[0], name = id.split(',')[1]).first()
 
 
+@pr.register_model(30)
 class ScoreMember(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'score_member'
@@ -60,12 +60,13 @@ class ScoreMember(db.Model):
     remark = db.Column(db.String(255), nullable = True)
 
 
+@pr.register_model(76)
 class ScoreRule(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'score_rule'
 
     account = db.Column(db.String(20), primary_key = True)
-    name = db.Column(db.String(20), primary_key = True)
+    code = db.Column(db.String(20), primary_key = True)
     description = db.Column(db.String(20), nullable = True, index = True)
     type = db.Column(db.String(20), nullable = False, index = True)
     amount = db.Column(db.Integer, nullable = False)
@@ -74,6 +75,7 @@ class ScoreRule(db.Model):
     remark = db.Column(db.String(255), nullable = True)
 
 
+@pr.register_model(31)
 class ScoreRecord(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'score_record'
@@ -100,27 +102,8 @@ class ScoreRecord(db.Model):
 db.create_all()
 
 
-@cr.model('75-ScoreAccount')
-def get_ScoreAccount_model():
-    return ScoreAccount
-
-
-@cr.model('76-ScoreRule')
-def get_ScoreRule_model():
-    return ScoreRule
-
-
-@cr.model('30-ScoreMember')
-def get_ScoreMember_model():
-    return ScoreMember
-
-
-@cr.model('31-ScoreRecord')
-def get_ScoreRecord_model():
-    return ScoreRecord
-
-
 # View-----------------------------------------------------------------------------------------------------
+@pr.register_view()
 class ScoreAccountView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -233,6 +216,7 @@ class ScoreAccountView(CVAdminModelView):
         form.target_account.data = target.replace(target[0:2], '')
 
 
+@pr.register_view()
 class ScoreMemberView(CVAdminModelView):
     can_create = False
     can_edit = False
@@ -257,16 +241,17 @@ class ScoreMemberView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '成员积分', '积分管理')
 
 
+@pr.register_view()
 class ScoreRuleView(CVAdminModelView):
     can_create = True
     can_edit = True
     can_delete = True
-    column_filters = ('account', 'name', 'type')
+    column_filters = ('account', 'code', 'type')
     column_list = (
-        'account', 'name', 'description', 'type', 'amount', 'create_at', 'update_at', 'remark')
+        'account', 'code', 'description', 'type', 'amount', 'create_at', 'update_at', 'remark')
     column_searchable_list = ('description', 'remark')
     column_labels = dict(account = '账户名',
-                         name = '规则名',
+                         code = '规则码',
                          description = '描述',
                          type = '类型',
                          amount = '数量',
@@ -278,7 +263,7 @@ class ScoreRuleView(CVAdminModelView):
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              type = lambda v, c, m, p: get_acttype_display(m.type))
-    form_columns = ('account', 'name', 'description', 'type', 'amount', 'remark')
+    form_columns = ('account', 'code', 'description', 'type', 'amount', 'remark')
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '积分规则设置', '机器人设置')
@@ -299,7 +284,7 @@ class ScoreRuleView(CVAdminModelView):
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.account = QuerySelectField('账户名', [validators.required(message = '账户名是必填字段')],
                                         query_factory = query_factory, get_label = get_label, get_pk = get_pk)
-        form.name = fields.StringField('规则名', [validators.required(message = '规则名是必填字段')])
+        form.code = fields.StringField('规则码', [validators.required(message = '规则码是必填字段')])
         form.description = fields.StringField('描述')
         form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
         form.amount = fields.StringField('数量', [validators.required(message = '数量是必填字段')])
@@ -309,7 +294,7 @@ class ScoreRuleView(CVAdminModelView):
     def get_edit_form(self):
         form = self.scaffold_form()
         form.account = fields.StringField('账户名', render_kw = {'readonly': True})
-        form.name = fields.StringField('规则名', render_kw = {'readonly': True})
+        form.code = fields.StringField('规则码', render_kw = {'readonly': True})
         form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
         form.description = fields.StringField('描述')
         form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
@@ -320,6 +305,7 @@ class ScoreRuleView(CVAdminModelView):
 
 # todo 优化类型等显示
 # todo member考虑改为一个字段
+@pr.register_view()
 class ScoreRecordView(CVAdminModelView):
     can_create = False
     can_edit = False
@@ -354,23 +340,3 @@ class ScoreRecordView(CVAdminModelView):
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '积分记录', '积分管理')
-
-
-@cr.view('75-ScoreAccount')
-def get_ScoreAccount_view():
-    return ScoreAccountView
-
-
-@cr.view('76-ScoreRule')
-def get_ScoreRule_view():
-    return ScoreRuleView
-
-
-@cr.view('30-ScoreMember')
-def get_ScoreMember_view():
-    return ScoreMemberView
-
-
-@cr.view('31-ScoreRecord')
-def get_ScoreRecord_view():
-    return ScoreRecordView

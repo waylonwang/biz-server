@@ -54,6 +54,16 @@ def require_apikey(func):
     return wrapper
 
 
+def register_api(*urls, **kwargs):
+    def decorator(cls):
+        global _api
+        _api.add_resource(cls, *urls, **kwargs)
+
+        return cls
+
+    return decorator
+
+
 def success(httpstatus = 200, **kwargs):
     '''
     :param kwargs: 数据正文

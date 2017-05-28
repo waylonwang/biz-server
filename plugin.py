@@ -1,42 +1,31 @@
-import functools
 import importlib
 import os
 import sys
 
 from env import get_plugin_dir
 
-# todo 直接支持类注册器
+
 class PluginsRegistry:
     """
     Represent a map of plugins and functions.
     """
 
-    def __init__(self, init_func=None):
+    def __init__(self, init_func = None):
         self.init_func = init_func
         self.model_map = {}
         self.view_map = {}
 
-    def model(self, model_name):
-        def decorator(func):
-            self.model_map[model_name] = func
-
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                return func(*args, **kwargs)
-
-            return wrapper
+    def register_model(self, order):
+        def decorator(cls):
+            self.model_map[order] = cls
+            return cls
 
         return decorator
 
-    def view(self, viewer_name):
-        def decorator(func):
-            self.view_map[viewer_name] = func
-
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                return func(*args, **kwargs)
-
-            return wrapper
+    def register_view(self):
+        def decorator(cls):
+            self.view_map[cls.__name__] = cls
+            return cls
 
         return decorator
 
@@ -65,13 +54,15 @@ class PluginsHub:
 
 hub = PluginsHub()
 
-def _init_mod(mod,app):
+
+def _init_mod(mod, app):
     mod_name = mod.__name__.split('.')[1]
     try:
-        if hasattr(mod, "init") :
+        if hasattr(mod, "init"):
             mod.init(app)
     except:
-        print('Failed to init plugin module "' + mod_name + '.py".', file=sys.stderr)
+        print('Failed to init plugin module "' + mod_name + '.py".', file = sys.stderr)
+
 
 def _add_registry_mod_cb(mod):
     mod_name = mod.__name__.split('.')[1]
@@ -79,10 +70,10 @@ def _add_registry_mod_cb(mod):
         if hasattr(mod, "__registry__"):
             hub.add_registry(mod_name, mod.__registry__)
     except AttributeError:
-        print('Failed to load plugin module "' + mod_name + '.py".', file=sys.stderr)
+        print('Failed to load plugin module "' + mod_name + '.py".', file = sys.stderr)
 
 
-def load_plugins(plugin_dir_name, app=None):
+def load_plugins(plugin_dir_name, app = None):
     plugin_dir = get_plugin_dir(plugin_dir_name)
     plugin_files = filter(
         lambda filename: filename.endswith('.py') and not filename.startswith('_'),
@@ -91,5 +82,5 @@ def load_plugins(plugin_dir_name, app=None):
     plugins = [os.path.splitext(file)[0] for file in plugin_files]
     for mod_name in plugins:
         mod = importlib.import_module(plugin_dir_name + '.' + mod_name)
-        _init_mod(mod,app)
+        _init_mod(mod, app)
         _add_registry_mod_cb(mod)

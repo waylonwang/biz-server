@@ -5,27 +5,26 @@
 
 
 """
-from datetime import datetime
 
 from flask_admin.form import rules
 from flask_restful import reqparse, Resource
-from pytz import utc
 from wtforms import validators, fields
 
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
 from common.bot import Bot
-from plugin import PluginsRegistry
 from common.util import get_now, display_datetime, get_botname, get_target_display, get_target_type_choice,\
     get_target_value
+from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
-api = ac.get_api()
 
+
+@pr.register_model(71)
 class BotParam(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'bot_param'
@@ -73,6 +72,8 @@ class BotParam(db.Model):
         BotParam.query.session.commit()
         return True
 
+
+@pr.register_model(72)
 class TargetRule(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'target_rule'
@@ -121,17 +122,8 @@ class TargetRule(db.Model):
 db.create_all()
 
 
-@cr.model('71-BotParam')
-def get_botparam_model():
-    return BotParam
-
-
-@cr.model('72-TargetRule')
-def get_targetrule_model():
-    return TargetRule
-
-
 # View-----------------------------------------------------------------------------------------------------
+@pr.register_view()
 class BotParamView(CVAdminModelView):
     column_display_pk = True
     column_filters = ('name',)
@@ -181,8 +173,9 @@ class BotParamView(CVAdminModelView):
             # if self.session.query(self.model) != None:
             # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
 
-class TargetRuleView(CVAdminModelView):
 
+@pr.register_view()
+class TargetRuleView(CVAdminModelView):
     __type_list = {'allow': '允许', 'block': '拒绝'}
 
     can_create = True
@@ -263,32 +256,23 @@ class TargetRuleView(CVAdminModelView):
                                        coerce = str,
                                        choices = self.__type_list.items())
         form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+
         def query_factory():
-            from flask_login import current_user
-            from common.bot import BotAssign
             return self.model.find_by_id()
 
         return form
 
     def on_model_change(self, form, model, is_created):
-        model.target = get_target_value(form.target_type.data,form.target_account.data)
+        model.target = get_target_value(form.target_type.data, form.target_account.data)
 
     def on_form_prefill(self, form, id):
         # form.botid.label =  Bot.find(form.botid.data).name
         target = self.model.find_by_id(id).target
-        form.target_account.data = target.replace(target[0:2],'')
-
-@cr.view('71-BotParam')
-def get_botparam_view():
-    return BotParamView
-
-
-@cr.view('72-TargetRule')
-def get_targetrule_view():
-    return TargetRuleView
+        form.target_account.data = target.replace(target[0:2], '')
 
 
 # Control--------------------------------------------------------------------------------------------------
+@ac.register_api('/botparams', endpoint = 'botparams')
 class BotParamsAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -300,14 +284,15 @@ class BotParamsAPI(Resource):
                 result.append({'botid': param.botid,
                                'name': param.name,
                                'value': param.value,
-                               'create_at': param.create_at,
-                               'update_at': param.update_at,
+                               'create_at': param.create_at.strftime('%Y-%m-%d %H:%M'),
+                               'update_at': param.update_at.strftime('%Y-%m-%d %H:%M'),
                                'remark': param.remark})
             return ac.success(params = result)
         except Exception as e:
             return ac.fault(error = e)
 
 
+@ac.register_api('/botparam', endpoint = 'botparam')
 class BotParamAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -323,8 +308,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  create_at = param.create_at,
-                                  update_at = param.update_at,
+                                  create_at = param.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = param.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -342,8 +327,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  create_at = param.create_at,
-                                  update_at = param.update_at,
+                                  create_at = param.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = param.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -360,8 +345,8 @@ class BotParamAPI(Resource):
                 return ac.success(botid = param.botid,
                                   name = param.name,
                                   value = param.value,
-                                  create_at = param.create_at,
-                                  update_at = param.update_at,
+                                  create_at = param.create_at.strftime('%Y-%m-%d %H:%M'),
+                                  update_at = param.update_at.strftime('%Y-%m-%d %H:%M'),
                                   remark = param.remark)
             else:
                 return ac.fault(error = Exception(ac.get_bot() + '未找到名称为' + args['name'] + '的参数'))
@@ -390,8 +375,8 @@ def get_targetrules(type):
             result.append({'botid': rule.botid,
                            'type': rule.type,
                            'target': rule.target,
-                           'create_at': rule.create_at,
-                           'update_at': rule.update_at,
+                           'create_at': rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                           'update_at': rule.update_at.strftime('%Y-%m-%d %H:%M'),
                            'remark': rule.remark})
         return ac.success(params = result)
     except Exception as e:
@@ -409,8 +394,8 @@ def put_targetlist(type, target_type):
             return ac.success(botid = rule.botid,
                               type = rule.type,
                               target = rule.target,
-                              create_at = rule.create_at,
-                              update_at = rule.update_at,
+                              create_at = rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                              update_at = rule.update_at.strftime('%Y-%m-%d %H:%M'),
                               remark = rule.remark)
         else:
             return ac.fault(error = Exception('未知原因导致数据创建失败'))
@@ -428,8 +413,8 @@ def get_targetrule(type, target_type):
             return ac.success(botid = rule.botid,
                               type = rule.type,
                               target = rule.target,
-                              create_at = rule.create_at,
-                              update_at = rule.update_at,
+                              create_at = rule.create_at.strftime('%Y-%m-%d %H:%M'),
+                              update_at = rule.update_at.strftime('%Y-%m-%d %H:%M'),
                               remark = rule.remark)
         else:
             return ac.fault(
@@ -452,6 +437,7 @@ def delete_targetrule(type, target_type):
         return ac.fault(error = e)
 
 
+@ac.register_api('/allow_list', endpoint = 'allowlist')
 class AllowsAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -459,6 +445,7 @@ class AllowsAPI(Resource):
         return get_targetrules('allow')
 
 
+@ac.register_api('/allow_group', endpoint = 'allowgroup')
 class AllowGroupAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -472,6 +459,7 @@ class AllowGroupAPI(Resource):
         return delete_targetrule('allow', 'g')
 
 
+@ac.register_api('/block_list', endpoint = 'blocklist')
 class BlocksAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -479,6 +467,7 @@ class BlocksAPI(Resource):
         return get_targetrules('block')
 
 
+@ac.register_api('/block_group', endpoint = 'blockgroup')
 class BlockGroupAPI(Resource):
     method_decorators = [ac.require_apikey]
 
@@ -490,11 +479,3 @@ class BlockGroupAPI(Resource):
 
     def delete(self):
         return delete_targetrule('block', 'g')
-
-
-api.add_resource(BotParamsAPI, '/botparams', endpoint = 'botparams')
-api.add_resource(BotParamAPI, '/botparam', endpoint = 'botparam')
-api.add_resource(AllowsAPI, '/allow_list', endpoint = 'allowlist')
-api.add_resource(AllowGroupAPI, '/allow_group', endpoint = 'allowgroup')
-api.add_resource(BlocksAPI, '/block_list', endpoint = 'blocklist')
-api.add_resource(BlockGroupAPI, '/block_group', endpoint = 'blockgroup')

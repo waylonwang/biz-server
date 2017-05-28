@@ -1,4 +1,5 @@
 import random
+import re
 import string
 from datetime import datetime
 
@@ -75,9 +76,46 @@ def get_acttype_display(type: str) -> str:
     return {'outgo': '支出', 'income': '收入'}.get(type, type)
 
 
-def get_omit_display(text: str, length: int = 10) -> str:
+def get_omit_display(text: str, length: int = 20) -> str:
+    def get_plus_len(text: str, length: int) -> int:
+        def _len_list(text: str) -> list:
+            # def len_zh(text: str) -> int:
+            #     # 中文 [\u4e00-\u9fa5]
+            #     # 非ASCII [^\x00-\xff]
+            #     temp = re.findall('[^\x00-\xff]+', text)
+            #     count = 0
+            #     for i in temp:
+            #         count += len(i)
+            #     return (count)
+            #
+            # def len_nzh(text: str) -> int:
+            #     temp = re.findall('[\x00-\xff]+', text)
+            #     count = 0
+            #     for i in temp:
+            #         count += len(i)
+            #     return (count)
+            #
+            # def len_plus(text: str) -> int:
+            #     return len_nzh(text) + len_zh(text) * 2
+            def _len(text: str) -> int:
+                # 中文 [\u4e00-\u9fa5]
+                # 非ASCII [^\x00-\xff]
+                return len(re.sub(r'[^\x00-\xff]', 'aa', text))
+
+            dlist = list(text)
+            return [_len(t) for t in dlist]
+
+        lenlist = _len_list(text)
+        cnt = 0
+        total = 0
+        for i in lenlist:
+            total += i
+            if total > length: return cnt
+            cnt += 1
+        return cnt
+
     if text is not None:
-        return text[0:length] + '...' if len(text) > length else text[0:length]
+        omit_length = get_plus_len(text, length)
+        return text[0:omit_length] + '...' if omit_length < len(text) else text
     else:
         return ''
-    # return text.rjust(10,'.')

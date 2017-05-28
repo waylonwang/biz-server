@@ -109,17 +109,31 @@ def init(app):
     from plugin import hub
     views = {}
     models = {}
-    for (hub_k, hub_v) in hub.registry_map.items():
+    # for (hub_k, hub_v) in hub.registry_map.items():
+    #     for (model_k, model_v) in hub_v.model_map.items():
+    #         models[model_k] = model_v
+    #     for (view_k, view_v) in hub_v.view_map.items():
+    #         views[view_k] = view_v
+    #
+    # views = [(k, views[k]) for k in sorted(views.keys())]
+    # for view in views:
+    #     id = view[0]
+    #     model_class = models[id]()
+    #     view_class = view[1]()
+    #     with warnings.catch_warnings():
+    #         warnings.filterwarnings('ignore', 'Fields missing from ruleset', UserWarning)
+    #         admin.add_view(view_class(model_class, db_control.get_db().session))
+
+    for(hub_k,hub_v) in hub.registry_map.items():
         for (model_k, model_v) in hub_v.model_map.items():
             models[model_k] = model_v
         for (view_k, view_v) in hub_v.view_map.items():
             views[view_k] = view_v
 
-    views = [(k, views[k]) for k in sorted(views.keys())]
-    for view in views:
-        id = view[0]
-        model_class = models[id]()
-        view_class = view[1]()
+    models_list = [models[k] for k in sorted(models.keys())]
+    for model in models_list:
+        model_class = model
+        view_class = views[model.__name__+'View']
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', 'Fields missing from ruleset', UserWarning)
             admin.add_view(view_class(model_class, db_control.get_db().session))

@@ -1,18 +1,21 @@
 from datetime import datetime
 
+from flask_restful import Resource
+
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, display_datetime, get_botname, get_target_prefix, get_target_value, get_omit_display
+from common.util import get_now, get_botname, get_target_value, get_omit_display,\
+    get_target_display
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
-api = ac.get_api()
 
 
+@pr.register_model(11)
 class Sign(db.Model):
     __bind_key__ = 'score'
     __tablename__ = 'sign'
@@ -49,12 +52,8 @@ class Sign(db.Model):
         return record
 
 
-@cr.model('11-Sign')
-def get_Sign_model():
-    return Sign
-
-
 # View-----------------------------------------------------------------------------------------------------
+@pr.register_view()
 class SignView(CVAdminModelView):
     can_create = False
     can_edit = False
@@ -69,7 +68,7 @@ class SignView(CVAdminModelView):
                          date = '日期', time = '时间',
                          message = '消息')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
-                             target = lambda v, c, m, p: _format_target(m.target),
+                             target = lambda v, c, m, p: get_target_display(m.target),
                              member_name = lambda v, c, m, p: get_omit_display(m.member_name),
                              message = lambda v, c, m, p: get_omit_display(m.message))
 
@@ -77,10 +76,10 @@ class SignView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '签到记录', '消息管理')
 
 
-@cr.view('11-Sign')
-def get_Sign_view():
-    return SignView
+# Control--------------------------------------------------------------------------------------------------
+@ac.register_api('/sign', endpoint = 'sign')
+class SignAPI(Resource):
+    method_decorators = [ac.require_apikey]
 
-
-def _format_target(text):
-    return text.replace('g#', '群:').replace('d#', '组:').replace('p#', '单聊:')
+    def post(self):
+        pass

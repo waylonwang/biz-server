@@ -7,7 +7,7 @@ from common.bot import Bot
 from common.util import get_now, display_datetime, generate_key, get_botname
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 _api_key = generate_key(32, True, False, True)
 _api_secret = generate_key(12, True, True, True)
@@ -15,8 +15,8 @@ _api_secret = generate_key(12, True, True, True)
 db = db_control.get_db()
 
 
-
 # todo 增加更新action
+@pr.register_model(95)
 class APIKey(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'apikey'
@@ -37,6 +37,7 @@ class APIKey(db.Model):
         return APIKey.query.filter_by(bitid = bitid).first()
 
 
+@pr.register_view()
 class APIKeyView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -103,14 +104,5 @@ class APIKeyView(CVAdminModelView):
                 model.key = form.new_key.data
                 model.secret = form.new_secret.data
 
+
 db.create_all()
-
-
-@cr.model('95-APIKey')
-def get_apikey_model():
-    return APIKey
-
-
-@cr.view('95-APIKey')
-def get_apikey_view():
-    return APIKeyView

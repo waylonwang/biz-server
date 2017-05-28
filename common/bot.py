@@ -6,11 +6,12 @@ from app_view import CVAdminModelView
 from common.util import get_now, display_datetime, get_botname, get_yesno_display
 from plugin import PluginsRegistry
 
-__registry__ = cr = PluginsRegistry()
+__registry__ = pr = PluginsRegistry()
 
 db = db_control.get_db()
 
 
+@pr.register_model(93)
 class Bot(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'bot'
@@ -31,6 +32,7 @@ class Bot(db.Model):
         return Bot.query.get(botid)
 
 
+@pr.register_model(94)
 class BotAssign(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'bot_assign'
@@ -50,6 +52,7 @@ class BotAssign(db.Model):
         return BotAssign.query.filter_by(botid = botid).all()
 
 
+@pr.register_view()
 class BotView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -89,6 +92,7 @@ class BotView(CVAdminModelView):
 
 
 # todo edit form中增加一个botname显示字段
+@pr.register_view()
 class BotAssignView(CVAdminModelView):
     can_create = True
     can_edit = True
@@ -142,23 +146,3 @@ class BotAssignView(CVAdminModelView):
 
 
 db.create_all()
-
-
-@cr.model('93-Bot')
-def get_bot_model():
-    return Bot
-
-
-@cr.model('94-BotAssign')
-def get_botassign_model():
-    return BotAssign
-
-
-@cr.view('93-Bot')
-def get_bot_view():
-    return BotView
-
-
-@cr.view('94-BotAssign')
-def get_botassign_view():
-    return BotAssignView
