@@ -127,16 +127,19 @@ class User(db.Model):
         return User.query.filter_by(active = 1).all()
 
 
-def create_init_data():
+def init():
     db.create_all()
-    admin_role = Role(name = "admin")
-    default_role = Role(name = "default")
-    db_control.get_db().session.add(admin_role)
-    db_control.get_db().session.add(default_role)
-    db_control.get_db().session.commit()
-    admin_user = User(username = "admin", password = generate_password_hash("admin"), rolename = "admin")
-    db_control.get_db().session.add(admin_user)
-    db_control.get_db().session.commit()
+    user_cnt = User.find_by_role('admin')
+    if user_cnt is None or user_cnt.cnt == 0:
+        admin_role = Role(name = "admin")
+        default_role = Role(name = "default")
+        db.session.add(admin_role)
+        db.session.add(default_role)
+        db.session.commit()
+        admin_user = User(username = "admin", password = generate_password_hash("admin"), rolename = "admin")
+        db.session.add(admin_user)
+        db.session.commit()
+
     return
 
 

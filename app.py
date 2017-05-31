@@ -13,10 +13,12 @@ oauth.init(app)
 if __name__ == '__main__':
     import plugin
     import app_view as view
+    import common.user as user
 
     plugin.load_plugins('common', app)
     plugin.load_plugins('plugins', app)
 
+    user.init()
     view.init(app)
 
     app.run(host = get_env_host(), port = get_env_port())
