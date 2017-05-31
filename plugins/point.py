@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from flask_restful import Resource, reqparse
-from sqlalchemy import case, func
+from sqlalchemy import case, func, and_
 
 import api_control as ac
 import db_control
@@ -9,6 +9,7 @@ from app_view import CVAdminModelView
 from common.util import get_now, get_botname, get_target_value, get_omit_display,\
     get_target_display, output_datetime, generate_key, get_yesno_display, display_datetime
 from plugin import PluginsRegistry
+from plugins.setting import BotParam
 
 __registry__ = pr = PluginsRegistry()
 
@@ -31,6 +32,7 @@ class Point(db.Model):
     point = db.Column(db.Integer, nullable = False, default = 1)
     confirm_code = db.Column(db.String(4), nullable = False, default = lambda: generate_key(4, False, False, True))
     has_confirmed = db.Column(db.Integer, nullable = True, default = 0)
+    is_newbie = db.Column(db.Integer, nullable = True, default = 0)
     date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now(),
                      index = True)
     time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
@@ -40,18 +42,12 @@ class Point(db.Model):
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     message = db.Column(db.String(20), nullable = False)
 
-    # todo 上限改为机器人参数，增加是否新人的输入
-    # todo  上限的判断提取成方法
     @staticmethod
-    def create(botid, target_type, target_account, member_id, reporter_id, point: int, message, report_limit = 7,
-               member_limit = 2, **kwargs):
+    def create(botid, target_type, target_account, member_id, reporter_id, point: int, message, is_newbie: bool = False,
+               **kwargs):
         target = get_target_value(target_type, target_account)
 
-        result = Point.get_report_count(botid, target, member_id, reporter_id, get_now().strftime('%Y-%m-%d'))
-        if int(result[0]) + point > report_limit:
-            raise Exception('报点数超过了报点人今天累计的上限')
-        elif int(result[1]) + point > member_limit:
-            raise Exception('报点数超过了受报人接受累计的上限')
+        Point.check_limit(botid, target, member_id, reporter_id, point, get_now().strftime('%Y-%m-%d'), is_newbie)
 
         record = Point(botid = botid,
                        target = target,
@@ -60,46 +56,94 @@ class Point(db.Model):
                        reporter_id = reporter_id,
                        reporter_name = '' if kwargs.get('reporter_name') is None else kwargs.get('reporter_name'),
                        point = point,
+                       is_newbie = 1 if is_newbie else 0,
                        message = message)
         record.query.session.add(record)
         record.query.session.commit()
         return PointConfirm.create(botid, target_type, target_account, record.id, record.member_id, record.confirm_code)
 
     @staticmethod
+    def check_limit(botid, target, member_id, reporter_id, point: int, date, is_newbie: bool = False):
+        member_limit = int(BotParam.find(botid, 'point_accept_limit').value)
+        if is_newbie:
+            report_limit = int(BotParam.find(botid, 'point_newbie_limit').value)
+        else:
+            report_limit = int(BotParam.find(botid, 'point_normal_limit').value)
+        result = Point.get_report_count(botid, target, member_id, reporter_id, date)
+        if int(result.reporter_confirmed_total) + point > report_limit:
+            raise Exception('报点数超过了报点人今天累计的上限')
+        elif int(result.member_confirmed_total) + point > member_limit:
+            raise Exception('报点数超过了受报人接受累计的上限')
+
+    @staticmethod
     def get_report_count(botid, target, member_id, reporter_id, date):
         return Point.query.session.query(
             func.ifnull(
-                func.sum(Point.point), 0
-            ).label('reporter_count'),
-            func.ifnull(
                 func.sum(
                     case(
-                        [(Point.member_id == member_id, Point.point)],
+                        [(Point.has_confirmed == 1, Point.point)],
                         else_ = 0
                     )
                 ), 0
-            ).label("member_count")
+            ).label('reporter_confirmed_total'),
+            func.ifnull(
+                func.sum(
+                    case(
+                        [(
+                            and_(Point.has_confirmed == 1, Point.member_id == member_id),
+                            Point.point
+                        )],
+                        else_ = 0
+                    )
+                ), 0
+            ).label("member_confirmed_total"),
+            func.ifnull(
+                func.sum(
+                    case(
+                        [(Point.has_confirmed == 0, Point.point)],
+                        else_ = 0
+                    )
+                ), 0
+            ).label('reporter_unconfirm_total'),
+            func.ifnull(
+                func.sum(
+                    case(
+                        [(
+                            and_(Point.has_confirmed == 0, Point.member_id == member_id),
+                            Point.point
+                        )],
+                        else_ = 0
+                    )
+                ), 0
+            ).label("member_unconfirm_total")
         ).filter(
             Point.botid == botid,
             Point.target == target,
             Point.reporter_id == reporter_id,
-            Point.date == date,
-            Point.has_confirmed == 1
-
+            Point.date == date
         ).first()
 
     @staticmethod
-    def confirm(id, report_limit = 7, member_limit = 2):
+    def get_report_status(botid, target_type, target_account, reporter_id,):
+        target = get_target_value(target_type, target_account)
+        result = Point.get_report_count(botid, target, '0', reporter_id, output_datetime(get_now(),True,False))
+        status={}
+        status['botid']=botid
+        status['target'] = target
+        status['reporter_id'] = reporter_id
+        status['reporter_confirmed_total'] = result.reporter_confirmed_total
+        status['reporter_unconfirm_total'] = result.reporter_unconfirm_total
+        return status
+
+
+    @staticmethod
+    def confirm(id, is_newbie: bool = False):
         point = Point.query.get(id)
 
-        result = Point.get_report_count(point.botid, point.target, point.member_id, point.reporter_id, point.date)
-        if int(result[0]) + point.point > report_limit:
-            raise Exception('报点数超过了报点人今天累计的上限:'+str(report_limit))
-        elif int(result[1]) + point.point > member_limit:
-            raise Exception('报点数超过了受报人今天累计的上限:'+str(member_limit))
+        Point.check_limit(point.botid, point.target, point.member_id, point.reporter_id, point.point, point.date,
+                          is_newbie)
 
         point.has_confirmed = 1
-        # Point.query.session.add(point)
         Point.query.session.commit()
 
         return point
@@ -140,7 +184,7 @@ class PointConfirm(db.Model):
         PointConfirm.query.session.commit()
 
     @staticmethod
-    def confirm(botid, target_type, target_account, member_id, confirm_code, report_limit = 7, member_limit = 2):
+    def confirm(botid, target_type, target_account, member_id, confirm_code, is_newbie: bool = False):
         PointConfirm.clear(botid, target_type, target_account)
         target = get_target_value(target_type, target_account)
         records = PointConfirm.query.filter(PointConfirm.botid == botid,
@@ -150,12 +194,13 @@ class PointConfirm(db.Model):
         if len(records) > 0:
             # for record in records:
             record = records[0]
-            point=Point.confirm(record.point_id, report_limit, member_limit)
+            point = Point.confirm(record.point_id, is_newbie)
             PointConfirm.query.session.delete(record)
             PointConfirm.query.session.commit()
             return point
         else:
             raise Exception('确认码[' + confirm_code + ']无效，请检查是否已经过期')
+
 
 # View-----------------------------------------------------------------------------------------------------
 @pr.register_view()
@@ -190,6 +235,7 @@ class PointView(CVAdminModelView):
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '报点记录', '报点管理')
+
 
 # todo point的内容显示为记录详情
 @pr.register_view()
@@ -231,14 +277,12 @@ class PointAPI(Resource):
             parser.add_argument('reporter_name')
             parser.add_argument('point', type = int, required = True, choices = (1, 2), help = '请求中必须包含point,且只能为1或2')
             parser.add_argument('message', required = True, help = '请求中必须包含message')
-            parser.add_argument('report_limit', type = int)
-            parser.add_argument('member_limit', type = int)
+            parser.add_argument('is_newbie', type = bool)
             args = parser.parse_args()
             kwargs = {}
             kwargs['member_name'] = args['member_name']
             kwargs['reporter_name'] = args['reporter_name']
-            if args['report_limit'] is not None: kwargs['report_limit'] = args['report_limit']
-            if args['member_limit'] is not None: kwargs['member_limit'] = args['member_limit']
+            if args['is_newbie'] is not None: kwargs['is_newbie'] = args['is_newbie']
             record = Point.create(ac.get_bot(),
                                   args['target_type'],
                                   args['target_account'],
@@ -274,12 +318,10 @@ class PointConfirmAPI(Resource):
             parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
             parser.add_argument('member_id', required = True, help = '请求中必须包含member_id')
             parser.add_argument('confirm_code', required = True, help = '请求中必须包含confirm_code')
-            parser.add_argument('report_limit', type = int)
-            parser.add_argument('member_limit', type = int)
+            parser.add_argument('is_newbie', type = bool)
             args = parser.parse_args()
             kwargs = {}
-            if args['report_limit'] is not None: kwargs['report_limit'] = args['report_limit']
-            if args['member_limit'] is not None: kwargs['member_limit'] = args['member_limit']
+            if args['is_newbie'] is not None: kwargs['is_newbie'] = args['is_newbie']
             record = PointConfirm.confirm(ac.get_bot(),
                                           args['target_type'],
                                           args['target_account'],
@@ -295,6 +337,29 @@ class PointConfirmAPI(Resource):
                                   member_name = record.member_name,
                                   point = record.point,
                                   has_confirmed = record.has_confirmed)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)
+
+@ac.register_api('/pointreportstatus', endpoint = 'pointreportstatus')
+class PointReportStatusAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def get(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('reporter_id', required = True, help = '请求中必须包含reporter_id')
+            args = parser.parse_args()
+
+            record = Point.get_report_status(ac.get_bot(),
+                                          args['target_type'],
+                                          args['target_account'],
+                                          args['reporter_id'])
+            if record is not None:
+                return ac.success(status = record)
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
         except Exception as e:

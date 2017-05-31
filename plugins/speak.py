@@ -110,7 +110,7 @@ class Speak(db.Model):
         baseline = 0
         if is_valid:
             from plugins.setting import BotParam
-            param = BotParam.find(botid, 'baseline')
+            param = BotParam.find(botid, 'speak_valid_baseline')
             if param is not None:
                 baseline = param.value
 
@@ -133,7 +133,7 @@ class Speak(db.Model):
         target = get_target_value(target_type, target_account)
         baseline = 0
         from plugins.setting import BotParam
-        param = BotParam.find(botid, 'baseline')
+        param = BotParam.find(botid, 'speak_valid_baseline')
         if param is not None:
             baseline = int(param.value)
 
@@ -245,7 +245,7 @@ class SpeakCount(db.Model):
                 'INSERT INTO speak_count(botid,target,sender_id,sender_name,date,message_count,vaild_count) '
                 'SELECT t1.botid,t1.target,t1.sender_id,t1.sender_name,t1.date,'
                 'SUM(1) message_count,SUM(CASE WHEN t1.washed_chars < t2.value THEN 0 ELSE 1 END) vaild_count '
-                'FROM speak t1 LEFT JOIN bot_param t2 ON t1.botid=t2.botid AND t2.name="baseline" '
+                'FROM speak t1 LEFT JOIN bot_param t2 ON t1.botid=t2.botid AND t2.name="speak_valid_baseline" '
                 'WHERE t1.botid = :botid AND t1.target = :target AND t1.date = :date '
                 'GROUP BY t1.botid,t1.target,t1.sender_id,t1.date',
                 {'botid': botid, 'target': target, 'date': date})

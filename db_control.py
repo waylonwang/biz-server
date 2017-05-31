@@ -1,6 +1,5 @@
 import os
 
-import sqlalchemy
 from flask_babelex import Babel
 from flask_sqlalchemy import SQLAlchemy
 

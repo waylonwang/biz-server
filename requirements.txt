@@ -5,5 +5,9 @@ flask_sqlalchemy
 flask_admin
 flask_login
 flask_babelex
+flask_principal
+flask_oauthlib
+flask_restful
 wtforms
 werkzeug
+markupsafe

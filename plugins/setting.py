@@ -36,17 +36,19 @@ class BotParam(db.Model):
     remark = db.Column(db.String(255), nullable = True)
 
     @staticmethod
-    def create(botid, name, value, remark = None):
+    def create(botid, name, value, remark = None, update = False):
         param = BotParam.find(botid, name)
-        if not param:
+        if param is None:
             param = BotParam(botid = botid,
                              name = name,
                              value = value,
-                             remark = remark if remark else '')
+                             remark = remark if remark is not None else '')
             param.query.session.add(param)
             param.query.session.commit()
         else:
-            param = BotParam.update(botid, name, value, remark)
+            if update:
+                param = BotParam.update(botid, name, value, remark)
+                param.query.session.commit()
         return param
 
     @staticmethod
@@ -70,6 +72,17 @@ class BotParam(db.Model):
     def delete(botid, name):
         BotParam.query.filter_by(botid = botid, name = name).delete()
         BotParam.query.session.commit()
+        return True
+
+    @staticmethod
+    def init(botid):
+        BotParam.create(botid, 'admin_group', '请更新设置', '可使用高级命令的管理群群号')
+        BotParam.create(botid, 'speak_valid_baseline', '请更新设置', '有效发言最低字数')
+        BotParam.create(botid, 'sign_code', '请更新设置', '签到福利规则代码')
+        BotParam.create(botid, 'point_accept_limit', '请更新设置', '每天接受同一报点人报点上限')
+        BotParam.create(botid, 'point_normal_limit', '请更新设置', '报点人每人可报点上限')
+        BotParam.create(botid, 'point_newbie_limit', '请更新设置', '新人每天可报点上限')
+        BotParam.create(botid, 'point_newbie_days', '请更新设置', '新人报点规则天数')
         return True
 
 
@@ -288,6 +301,21 @@ class BotParamsAPI(Resource):
                                'update_at': param.update_at.strftime('%Y-%m-%d %H:%M'),
                                'remark': param.remark})
             return ac.success(params = result)
+        except Exception as e:
+            return ac.fault(error = e)
+
+
+@ac.register_api('/botparaminit', endpoint = 'botparaminit')
+class BotParamInitAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def put(self):
+        try:
+            result = BotParam.init(ac.get_bot())
+            if result:
+                return ac.success(result = '数据初始化成功')
+            else:
+                return ac.fault(error = Exception('未知原因导致数据初始化失败'))
         except Exception as e:
             return ac.fault(error = e)
 

@@ -1,12 +1,11 @@
 FROM python:3.5.1
 MAINTAINER Waylon Wang <waylon.act@gmail.com>
 
-WORKDIR /cmd-server
+WORKDIR /biz-server
 COPY *.py ./
-COPY msg_src_adapters msg_src_adapters
-COPY filters filters
-COPY commands commands
-COPY nl_processors nl_processors
+COPY common common
+COPY plugins plugins
+COPY templates templates
 COPY requirements.txt requirements.txt
 
 RUN pip install --upgrade pip
@@ -20,6 +19,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
-VOLUME /cmd-server
+VOLUME /biz-server
 
-CMD python /cmd-server/app.py
+CMD python /biz-server/app.py
