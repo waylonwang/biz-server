@@ -1,13 +1,15 @@
 from datetime import datetime
 
-from flask_restful import Resource
+from flask_restful import Resource, reqparse
 
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, get_botname, get_target_value, get_omit_display,\
-    get_target_display
+    get_target_display, output_datetime, display_datetime
 from plugin import PluginsRegistry
+from plugins.score import ScoreRecord
+from plugins.setting import BotParam
 
 __registry__ = pr = PluginsRegistry()
 
@@ -35,11 +37,17 @@ class Sign(db.Model):
 
     @staticmethod
     def create(botid, target_type, target_account, member_id, message, **kwargs):
+        sign = Sign.find_by_date(botid, target_type, target_account, member_id, get_now().strftime('%Y-%m-%d'),
+                                 get_now().strftime('%Y-%m-%d'), )
+        if len(sign) > 0:
+            raise Exception(
+                member_id + ':' + ('' if kwargs.get('member_name') is None else kwargs.get('member_name')) + '今天已经签过到了')
+
         target = get_target_value(target_type, target_account)
         record = Sign(botid = botid,
                       target = target,
                       member_id = member_id,
-                      member_name = '' if kwargs.get('member_name') == None else kwargs.get('member_name'),
+                      member_name = '' if kwargs.get('member_name') is None else kwargs.get('member_name'),
                       # date = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%Y-%m-%d') if kwargs.get(
                       #     'date') is None else kwargs.get('date'),
                       # time = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%H:%M') if kwargs.get(
@@ -49,7 +57,21 @@ class Sign(db.Model):
                       message = message)
         record.query.session.add(record)
         record.query.session.commit()
+        sign_code = BotParam.find(botid, 'sign_code')
+        if sign_code is not None:
+            ScoreRecord.create_change(sign_code.value, member_id,
+                                      member_name = kwargs.get('member_name'), botid = botid)
+
         return record
+
+    @staticmethod
+    def find_by_date(botid, target_type, target_account, member_id, date_from, date_to):
+        target = get_target_value(target_type, target_account)
+        return Sign.query.filter(Sign.botid == botid,
+                                 Sign.target == target,
+                                 Sign.member_id == member_id,
+                                 Sign.date >= date_from,
+                                 Sign.date <= date_to).all()
 
 
 # View-----------------------------------------------------------------------------------------------------
@@ -61,16 +83,20 @@ class SignView(CVAdminModelView):
     page_size = 100
     column_filters = ('target', 'member_id', 'member_name', 'date')
     column_list = (
-        'botid', 'target', 'member_id', 'member_name', 'date', 'time', 'message')
+        'botid', 'target', 'member', 'date', 'time', 'message')
     column_searchable_list = ('member_name',)
     column_labels = dict(botid = '机器人', target = '目标',
-                         member_id = '成员账号', member_name = '成员名称',
+                         member = '成员', member_id = '成员账号', member_name = '成员名称',
                          date = '日期', time = '时间',
                          message = '消息')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             member_name = lambda v, c, m, p: get_omit_display(m.member_name),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             date = lambda v, c, m, p: display_datetime(m.create_at, False),
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
                              message = lambda v, c, m, p: get_omit_display(m.message))
+
+    column_default_sort = ('id', True)
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '签到记录', '消息管理')
@@ -82,4 +108,30 @@ class SignAPI(Resource):
     method_decorators = [ac.require_apikey]
 
     def post(self):
-        pass
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('member_id', required = True, help = '请求中必须包含member_id')
+            parser.add_argument('member_name')
+            parser.add_argument('message', required = True, help = '请求中必须包含message')
+            args = parser.parse_args()
+            record = Sign.create(ac.get_bot(),
+                                 args['target_type'],
+                                 args['target_account'],
+                                 args['member_id'],
+                                 args['message'],
+                                 member_name = args['member_name'])
+            if record is not None:
+                return ac.success(botid = record.botid,
+                                  target = record.target,
+                                  member_id = record.member_id,
+                                  member_name = record.member_name,
+                                  date = output_datetime(record.date),
+                                  time = output_datetime(record.time),
+                                  create_at = output_datetime(record.create_at),
+                                  message = record.message)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)

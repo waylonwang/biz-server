@@ -11,8 +11,8 @@ _db = None
 
 def init(app):
     app.config.setdefault('SQLALCHEMY_DATABASE_URI', 'sqlite:///' + get_default_db_path())
-    app.config.setdefault('SQLALCHEMY_BINDS', _get_db_binds())
-    app.config.setdefault('SQLALCHEMY_ECHO', False)
+    app.config.setdefault('SQLALCHEMY_BINDS', get_db_binds())
+    app.config.setdefault('SQLALCHEMY_ECHO', True)
     app.config.setdefault('SQLALCHEMY_TRACK_MODIFICATIONS', False)
     babel = Babel(app)
 
@@ -35,7 +35,7 @@ def get_db():
     return _db
 
 
-def _get_db_binds() -> dict:
+def get_db_binds() -> dict:
     binds = config().get('db_binds', {})
     db_binds = {}
     for (k, v) in binds.items():

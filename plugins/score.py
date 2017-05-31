@@ -1,12 +1,19 @@
+import uuid
 from datetime import datetime
 
+from flask import url_for
 from flask_admin.form import rules
+from flask_restful import Resource, reqparse
+from markupsafe import Markup
+from sqlalchemy.orm import sessionmaker
 from wtforms import validators, fields
 
+import api_control as ac
 import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
-    get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display
+    get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display, output_datetime,\
+    get_transtype_display
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -17,18 +24,24 @@ db = db_control.get_db()
 
 @pr.register_model(75)
 class ScoreAccount(db.Model):
+    """
+    积分账户说明：
+    1.每个机器人可以拥有多个积分账户，这些积分账户可以分布在同一个目标中，也可以分布在不同目标中
+    2.无论归属哪个机器人，所有积分账户的账户名不能重复
+    3.在未指定账户时，积分记账记入机器人的缺省账户
+    """
     __bind_key__ = 'score'
     __tablename__ = 'score_account'
 
     botid = db.Column(db.String(20), primary_key = True)
     name = db.Column(db.String(20), primary_key = True, unique = True)
     description = db.Column(db.String(20), nullable = True)
-    type = db.Column(db.String(20), nullable = True, index = True)
+    # type = db.Column(db.String(20), nullable = True, index = True)
     is_default = db.Column(db.Integer, nullable = True, index = True)
     target = db.Column(db.String(20), nullable = True)
-    income = db.Column(db.Integer, nullable = True)
-    outgo = db.Column(db.Integer, nullable = True)
-    balance = db.Column(db.Integer, nullable = True)
+    income = db.Column(db.Integer, nullable = True, default = 0)
+    outgo = db.Column(db.Integer, nullable = True, default = 0)
+    balance = db.Column(db.Integer, nullable = True, default = 0)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
@@ -43,21 +56,29 @@ class ScoreAccount(db.Model):
     def find_by_id(id):
         return ScoreAccount.query.filter_by(botid = id.split(',')[0], name = id.split(',')[1]).first()
 
+    @staticmethod
+    def get_acount(name):
+        return ScoreAccount.query.filter_by(name = name).first()
 
-@pr.register_model(30)
-class ScoreMember(db.Model):
-    __bind_key__ = 'score'
-    __tablename__ = 'score_member'
+    @staticmethod
+    def increase(account: str, member_id: str, amount: int):
+        act = ScoreAccount.get_acount(account)
+        if act is None: return None
+        act.income += amount
+        act.balance += amount
+        ScoreAccount.query.session.commit()
 
-    account = db.Column(db.String(20), primary_key = True)
-    member_id = db.Column(db.String(20), primary_key = True)
-    member_name = db.Column(db.String(20), nullable = False, index = True)
-    income = db.Column(db.Integer, nullable = False)
-    outgo = db.Column(db.Integer, nullable = False)
-    balance = db.Column(db.Integer, nullable = False)
-    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
-    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
-    remark = db.Column(db.String(255), nullable = True)
+    @staticmethod
+    def reduce(account: str, member_id: str, amount: int):
+        act = ScoreAccount.get_acount(account)
+        if act is None: return None
+        act.outgo += amount
+        act.balance -= amount
+        ScoreAccount.query.session.commit()
+
+    @staticmethod
+    def get_default(botid):
+        return ScoreAccount.query.filter_by(botid = botid, is_default = True).first()
 
 
 @pr.register_model(76)
@@ -69,10 +90,62 @@ class ScoreRule(db.Model):
     code = db.Column(db.String(20), primary_key = True)
     description = db.Column(db.String(20), nullable = True, index = True)
     type = db.Column(db.String(20), nullable = False, index = True)
-    amount = db.Column(db.Integer, nullable = False)
+    amount = db.Column(db.Integer, nullable = True, default = 0)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
+
+    @staticmethod
+    def get_rule(account, code):
+        return ScoreRule.query.filter_by(account = account, code = code).first()
+
+
+@pr.register_model(30)
+class ScoreMember(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'score_member'
+
+    account = db.Column(db.String(20), primary_key = True)
+    member_id = db.Column(db.String(20), primary_key = True)
+    member_name = db.Column(db.String(20), nullable = True)
+    income = db.Column(db.Integer, nullable = False, default = 0)
+    outgo = db.Column(db.Integer, nullable = False, default = 0)
+    balance = db.Column(db.Integer, nullable = False, default = 0)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
+    remark = db.Column(db.String(255), nullable = True)
+
+    @staticmethod
+    def get_member(account, member_id, **kwargs):
+        member = ScoreMember.query.filter_by(account = account, member_id = member_id)
+        if member.first() is None:
+            member = ScoreMember(account = account,
+                                 member_id = member_id,
+                                 income = 0,
+                                 outgo = 0,
+                                 balance = 0,
+                                 member_name = '' if kwargs.get('member_name') is None else kwargs.get(
+                                     'member_name'),
+                                 remark = '' if kwargs.get('remark') is None else kwargs.get('remark'))
+            ScoreMember.query.session.add(member)
+            ScoreMember.query.session.commit()
+            return member
+        else:
+            return member.first()
+
+    @staticmethod
+    def increase(account: str, member_id: str, amount: int, **kwargs):
+        member = ScoreMember.get_member(account, member_id, **kwargs)
+        member.income += amount
+        member.balance += amount
+        ScoreMember.query.session.commit()
+
+    @staticmethod
+    def reduce(account: str, member_id: str, amount: int, **kwargs):
+        member = ScoreMember.get_member(account, member_id, **kwargs)
+        member.outgo += amount
+        member.balance -= amount
+        ScoreMember.query.session.commit()
 
 
 @pr.register_model(31)
@@ -82,14 +155,14 @@ class ScoreRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key = True, autoincrement = True)
     account = db.Column(db.String(20), nullable = False, index = True)
-    trans_type = db.Column(db.String(20), nullable = False, index = True)
-    outgo_member_id = db.Column(db.String(20), nullable = False, index = True)
-    outgo_member_name = db.Column(db.String(20), nullable = False, index = True)
-    outgo_amount = db.Column(db.Integer, nullable = False)
-    income_member_id = db.Column(db.String(20), nullable = False, index = True)
-    income_member_name = db.Column(db.String(20), nullable = False, index = True)
-    income_amount = db.Column(db.Integer, nullable = False)
     biz_type = db.Column(db.String(20), nullable = False, index = True)
+    trans_type = db.Column(db.String(20), nullable = False, index = True)
+    transfer_id = db.Column(db.String(32), nullable = True)
+    member_id = db.Column(db.String(20), nullable = True, index = True)
+    member_name = db.Column(db.String(20), nullable = True, index = True)
+    amount = db.Column(db.Integer, nullable = True, default = 0)
+    before = db.Column(db.Integer, nullable = True, default = 0)
+    after = db.Column(db.Integer, nullable = True, default = 0)
     date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now().date,
                      index = True)
     time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
@@ -97,6 +170,107 @@ class ScoreRecord(db.Model):
                      index = True)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
+
+    @staticmethod
+    def create_change(biz_type: str, member_id: str, amount: int = None, account: str = None, **kwargs):
+        if account is None:
+            act = ScoreAccount.get_default(kwargs.get('botid'))
+            if act is not None:
+                account = act.name
+        if account is None: return None
+
+        rule = ScoreRule.get_rule(account, biz_type)
+        if rule is None or not (rule.type == 'income' or rule.type == 'outgo'): return None
+
+        amount = amount if amount is not None else rule.amount
+
+        before = ScoreMember.get_member(account, member_id,
+                                        member_name = kwargs.get('member_name', member_id),
+                                        remark = '积分变更自动创建').balance
+        after = before + amount if rule.type == 'income' else before - amount
+        record = ScoreRecord(account = account,
+                             biz_type = biz_type,
+                             trans_type = rule.type,
+                             member_id = member_id,
+                             amount = amount,
+                             before = before,
+                             after = after,
+                             member_name = '' if kwargs.get('member_name') is None else kwargs.get(
+                                 'member_name'),
+                             remark = '' if kwargs.get('remark') is None else kwargs.get('remark'))
+
+        record.query.session.add(record)
+        record.query.session.commit()
+
+        if rule.type == 'outgo':
+            ScoreMember.reduce(account, member_id, amount, **kwargs)
+            ScoreAccount.reduce(account, member_id, amount)
+        else:
+            ScoreMember.increase(account, member_id, amount, **kwargs)
+            ScoreAccount.increase(account, member_id, amount)
+        return record
+
+    @staticmethod
+    def create_transfer(biz_type: str, outgo_member_id: str, income_member_id: str, amount: int, account: str = None,
+                        **kwargs):
+        if account is None:
+            act = ScoreAccount.get_default(kwargs.get('botid'))
+            if act is not None:
+                account = act.name
+        if account is None: return None
+
+        rule = ScoreRule.get_rule(account, biz_type)
+        if rule is None or rule.type != 'transfer': return None
+
+        transfer_id = uuid.uuid1().hex
+
+        before = ScoreMember.get_member(account, outgo_member_id,
+                                        member_name = kwargs.get('outgo_member_name', outgo_member_id),
+                                        remark = '积分转账自动创建').balance
+        record = ScoreRecord(account = account,
+                             biz_type = biz_type,
+                             trans_type = rule.type,
+                             transfer_id = transfer_id,
+                             member_id = outgo_member_id,
+                             amount = amount * -1,
+                             before = before,
+                             after = before - amount,
+                             member_name = '' if kwargs.get('outgo_member_name') is None else kwargs.get(
+                                 'outgo_member_name'),
+                             remark = '' if kwargs.get('remark') is None else kwargs.get('remark'))
+        record.query.session.add(record)
+
+        before = ScoreMember.get_member(account, income_member_id,
+                                        member_name = kwargs.get('income_member_name', income_member_id),
+                                        remark = '积分转账自动创建').balance
+        record = ScoreRecord(account = account,
+                             biz_type = biz_type,
+                             trans_type = rule.type,
+                             transfer_id = transfer_id,
+                             member_id = income_member_id,
+                             amount = amount,
+                             before = before,
+                             after = before + amount,
+                             member_name = '' if kwargs.get('income_member_name') is None else kwargs.get(
+                                 'income_member_name'),
+                             remark = '' if kwargs.get('remark') is None else kwargs.get('remark'))
+        record.query.session.add(record)
+        record.query.session.commit()
+
+        ScoreMember.reduce(account, outgo_member_id, amount, **kwargs)
+        ScoreAccount.reduce(account, outgo_member_id, amount)
+        ScoreMember.increase(account, income_member_id, amount, **kwargs)
+        ScoreAccount.increase(account, income_member_id, amount)
+
+        return record
+
+    @staticmethod
+    def find_by_member(member_id):
+        session = sessionmaker(bind=db.get_engine(bind='score'))()
+        cnts = session.execute('SELECT count(1) cnt FROM score_record WHERE member_id = :id', {'id': member_id})
+        if cnts is not None:
+            return cnts.first()
+        return None
 
 
 db.create_all()
@@ -109,15 +283,19 @@ class ScoreAccountView(CVAdminModelView):
     can_edit = True
     can_delete = True
     page_size = 100
-    column_filters = ('target', 'type', 'is_default', 'income', 'outgo', 'balance')
+    column_filters = ('target',
+                      # 'type',
+                      'is_default', 'income', 'outgo', 'balance')
     column_list = (
-        'botid', 'name', 'description', 'type', 'is_default', 'target', 'income', 'outgo', 'balance', 'create_at',
+        'botid', 'name', 'description',
+        # 'type',
+        'is_default', 'target', 'income', 'outgo', 'balance', 'create_at',
         'update_at', 'remark')
     column_searchable_list = ('name', 'description', 'remark')
     column_labels = dict(botid = '机器人',
                          name = '账户名',
                          description = '账户描述',
-                         type = '账户类型',
+                         # type = '账户类型',
                          is_default = '缺省账户',
                          target = '目标',
                          income = '总收入',
@@ -132,18 +310,24 @@ class ScoreAccountView(CVAdminModelView):
                              remark = lambda v, c, m, p: get_omit_display(m.remark),
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
-                             type = lambda v, c, m, p: get_acttype_display(m.type),
+                             # type = lambda v, c, m, p: get_acttype_display(m.type),
                              is_default = lambda v, c, m, p: get_yesno_display(m.is_default))
-    form_columns = ('botid', 'name', 'description', 'type', 'is_default', 'target', 'remark')
+    form_columns = ('botid', 'name', 'description',
+                    # 'type',
+                    'is_default', 'target', 'remark')
     form_create_rules = (
         rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
         rules.FieldSet(('target_type', 'target_account'), '目标设置'),
-        rules.FieldSet(('type', 'is_default'), '其他选项')
+        rules.FieldSet((
+            # 'type',
+            'is_default',), '其他选项')
     )
     form_edit_rules = (
         rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
         rules.FieldSet(('target_type', 'target_account'), '目标设置'),
-        rules.FieldSet(('type', 'is_default'), '其他选项')
+        rules.FieldSet((
+            # 'type',
+            'is_default',), '其他选项')
     )
 
     # form_choices = {'is_default': get_yesno_choice(),
@@ -224,17 +408,36 @@ class ScoreMemberView(CVAdminModelView):
     page_size = 100
     column_filters = ('account', 'member_id', 'member_name', 'income', 'outgo', 'balance')
     column_list = (
-        'account', 'member_id', 'member_name', 'income', 'outgo', 'balance')
+    'account', 'member', 'income', 'outgo', 'balance', 'record_count', 'create_at', 'update_at', 'remark')
     column_searchable_list = ('member_name', 'remark')
     column_labels = dict(account = '账户名',
+                         member = '成员',
                          member_id = '成员账号',
                          member_name = '成员名称',
                          income = '总收入',
                          outgo = '总支出',
                          balance = '余额',
+                         record_count = '交易次数',
                          create_at = '创建时间',
+                         update_at = '更新时间',
                          remark = '备注')
-    column_formatters = dict(member_name = lambda v, c, m, p: get_omit_display(m.member_name),
+
+    def _record_formatter(view, context, model, name):
+        cnt = ScoreRecord.find_by_member(model.member_id)
+        if cnt is not None:
+            return Markup(
+                u"<a href= '%s'>%s</a>" % (
+                    url_for('scorerecord.index_view', flt2_16 = model.member_id),
+                    cnt[0]
+                )
+            )
+        else:
+            return 0
+
+    column_formatters = dict(member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             record_count = _record_formatter,
+                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              remark = lambda v, c, m, p: get_omit_display(m.remark))
 
     def __init__(self, model, session):
@@ -303,8 +506,6 @@ class ScoreRuleView(CVAdminModelView):
         return form
 
 
-# todo 优化类型等显示
-# todo member考虑改为一个字段
 @pr.register_view()
 class ScoreRecordView(CVAdminModelView):
     can_create = False
@@ -312,31 +513,124 @@ class ScoreRecordView(CVAdminModelView):
     can_delete = False
     page_size = 100
     column_filters = ('account', 'trans_type',
-                      'outgo_member_id', 'income_member_id',
-                      'outgo_amount', 'income_amount',
+                      'member_id', 'amount',
                       'biz_type', 'date')
     column_list = (
-        'account', 'trans_type',
-        'outgo_member_id', 'outgo_member_name', 'outgo_amount',
-        'income_member_id', 'income_member_name', 'income_amount',
-        'biz_type', 'date', 'time', 'remark')
-    column_searchable_list = ('outgo_member_name', 'income_member_name', 'remark')
+        'account', 'biz_type', 'trans_type',
+        'member', 'before', 'amount', 'after',
+        'date', 'time', 'remark')
+    column_searchable_list = ('member_name', 'remark')
     column_labels = dict(account = '账户名',
-                         trans_type = '交易类型',
-                         outgo_member_id = '转出成员账号',
-                         outgo_member_name = '转出成员名称',
-                         outgo_amount = '转出数量',
-                         income_member_id = '转入成员账号',
-                         income_member_name = '转入成员名称',
-                         income_amount = '转入数量',
                          biz_type = '来源类型',
+                         trans_type = '交易类型',
+                         member = '成员',
+                         member_id = '成员账号',
+                         member_name = '成员名称',
+                         amount = '交易数量',
+                         before = '交易前余额',
+                         after = '交易后余额',
                          date = '日期',
                          time = '时间',
-                         remark = '消息')
+                         remark = '备注')
+
     column_formatters = dict(target = lambda v, c, m, p: get_target_display(m.target),
-                             outgo_member_name = lambda v, c, m, p: get_omit_display(m.outgo_member_name),
-                             income_member_name = lambda v, c, m, p: get_omit_display(m.income_member_name),
+                             biz_type = lambda v, c, m, p: get_omit_display(
+                                 ScoreRule.get_rule(m.account, m.biz_type).description, 30),
+                             trans_type = lambda v, c, m, p: get_transtype_display(m.trans_type, m.amount < 0),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             amount = lambda v, c, m, p: abs(m.amount),
+                             date = lambda v, c, m, p: display_datetime(m.create_at, False),
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
                              remark = lambda v, c, m, p: get_omit_display(m.remark))
+
+    column_default_sort = ('id', True)
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '积分记录', '积分管理')
+
+
+# Control--------------------------------------------------------------------------------------------------
+@ac.register_api('/score_change', endpoint = 'score_change')
+class ScoreChangeAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def post(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('biz_type', required = True, help = '请求中必须包含biz_type')
+            parser.add_argument('member_id', required = True, help = '请求中必须包含member_id')
+            parser.add_argument('amount', type = int)
+            parser.add_argument('account')
+            parser.add_argument('member_name')
+            parser.add_argument('remark')
+            args = parser.parse_args()
+
+            record = ScoreRecord.create_change(args['biz_type'],
+                                               args['member_id'],
+                                               args['amount'],
+                                               args['account'],
+                                               member_name = args['member_name'],
+                                               remark = args['remark'],
+                                               botid = ac.get_bot())
+            if record is not None:
+                return ac.success(account = record.account,
+                                  trans_type = record.trans_type,
+                                  biz_type = record.biz_type,
+                                  member_id = record.member_id,
+                                  member_name = record.member_name,
+                                  amount = record.amount,
+                                  date = output_datetime(record.date),
+                                  time = output_datetime(record.time),
+                                  create_at = output_datetime(record.create_at),
+                                  remark = record.remark)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)
+
+
+@ac.register_api('/score_transfer', endpoint = 'score_transfer')
+class ScoreTransferAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def post(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('biz_type', required = True, help = '请求中必须包含biz_type')
+            parser.add_argument('outgo_member_id', required = True, help = '请求中必须包含outgo_member_id')
+            parser.add_argument('income_member_id', required = True, help = '请求中必须包含income_member_id')
+            parser.add_argument('amount', type = int, required = True, help = '请求中必须包含amount')
+            parser.add_argument('account')
+            parser.add_argument('outgo_member_name')
+            parser.add_argument('income_member_name')
+            parser.add_argument('remark')
+            args = parser.parse_args()
+            if args['amount'] <= 0:
+                return ac.fault(error = Exception('amount必须大于0'))
+
+            record = ScoreRecord.create_transfer(args['biz_type'],
+                                                 args['outgo_member_id'],
+                                                 args['income_member_id'],
+                                                 args['amount'],
+                                                 args['account'],
+                                                 outgo_member_name = args['outgo_member_name'],
+                                                 income_member_name = args['income_member_name'],
+                                                 remark = args['remark'],
+                                                 botid = ac.get_bot())
+            if record is not None:
+                return ac.success(account = record.account,
+                                  biz_type = record.biz_type,
+                                  trans_type = record.trans_type,
+                                  outgo_member_id = args['outgo_member_id'],
+                                  outgo_member_name = args['outgo_member_name'],
+                                  income_member_id = args['income_member_id'],
+                                  income_member_name = args['income_member_name'],
+                                  amount = record.amount,
+                                  date = output_datetime(record.date),
+                                  time = output_datetime(record.time),
+                                  create_at = output_datetime(record.create_at),
+                                  remark = args['remark'])
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)

@@ -6,6 +6,7 @@ from flask_admin import Admin, AdminIndexView, expose, helpers
 from flask_admin.contrib.fileadmin import FileAdmin
 from flask_admin.contrib.sqla import ModelView
 from flask_principal import identity_changed, Identity, current_app, AnonymousIdentity
+from markupsafe import Markup
 from werkzeug.security import generate_password_hash
 
 import db_control
@@ -31,7 +32,7 @@ class CVAdminFileView(FileAdmin):
     column_labels = dict(name='文件名', size='大小', date='修改时间')
 
     def is_accessible(self):
-        from common.login_control import admin_permission
+        from common.login import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -49,7 +50,7 @@ class CVAdminIndexView(AdminIndexView):
     @expose('/login/', methods=('GET', 'POST'))
     def login_view(self):
         # handle user login
-        from common.login_control import LoginForm
+        from common.login import LoginForm
         form = LoginForm(request.form)
         if helpers.validate_form_on_submit(form):
             user = form.get_user()
@@ -67,7 +68,7 @@ class CVAdminIndexView(AdminIndexView):
 
     @expose('/register/', methods=('GET', 'POST'))
     def register_view(self):
-        from common.login_control import RegistrationForm
+        from common.login import RegistrationForm
         form = RegistrationForm(request.form)
         if helpers.validate_form_on_submit(form):
             from common.user import User
@@ -106,23 +107,10 @@ def init(app):
     def index():
         return render_template('index.html')
 
+
     from plugin import hub
     views = {}
     models = {}
-    # for (hub_k, hub_v) in hub.registry_map.items():
-    #     for (model_k, model_v) in hub_v.model_map.items():
-    #         models[model_k] = model_v
-    #     for (view_k, view_v) in hub_v.view_map.items():
-    #         views[view_k] = view_v
-    #
-    # views = [(k, views[k]) for k in sorted(views.keys())]
-    # for view in views:
-    #     id = view[0]
-    #     model_class = models[id]()
-    #     view_class = view[1]()
-    #     with warnings.catch_warnings():
-    #         warnings.filterwarnings('ignore', 'Fields missing from ruleset', UserWarning)
-    #         admin.add_view(view_class(model_class, db_control.get_db().session))
 
     for(hub_k,hub_v) in hub.registry_map.items():
         for (model_k, model_v) in hub_v.model_map.items():

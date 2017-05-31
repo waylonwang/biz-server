@@ -159,7 +159,7 @@ class BotParamView(CVAdminModelView):
             return super(BotParamView, self).get_query().filter(self.model.botid == current_user.username)
         else:
             return super(BotParamView, self).get_query()
-            # if self.session.query(self.model) != None:
+            # if self.session.query(self.model) is not None:
             # # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
             #     return self.session.query(self.model).filter(self.model.botid == current_user.login)
 
@@ -170,7 +170,7 @@ class BotParamView(CVAdminModelView):
             return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
         else:
             return super(BotParamView, self).get_count_query()
-            # if self.session.query(self.model) != None:
+            # if self.session.query(self.model) is not None:
             # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
 
 

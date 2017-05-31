@@ -1,0 +1,301 @@
+from datetime import datetime, timedelta
+
+from flask_restful import Resource, reqparse
+from sqlalchemy import case, func
+
+import api_control as ac
+import db_control
+from app_view import CVAdminModelView
+from common.util import get_now, get_botname, get_target_value, get_omit_display,\
+    get_target_display, output_datetime, generate_key, get_yesno_display, display_datetime
+from plugin import PluginsRegistry
+
+__registry__ = pr = PluginsRegistry()
+
+# Model----------------------------------------------------------------------------------------------------
+db = db_control.get_db()
+
+
+@pr.register_model(20)
+class Point(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'point_record'
+
+    id = db.Column(db.Integer, primary_key = True, autoincrement = True)
+    botid = db.Column(db.String(20), nullable = False)
+    target = db.Column(db.String(20), nullable = False)
+    member_id = db.Column(db.String(20), nullable = False)
+    member_name = db.Column(db.String(20), nullable = False)
+    reporter_id = db.Column(db.String(20), nullable = False)
+    reporter_name = db.Column(db.String(20), nullable = False)
+    point = db.Column(db.Integer, nullable = False, default = 1)
+    confirm_code = db.Column(db.String(4), nullable = False, default = lambda: generate_key(4, False, False, True))
+    has_confirmed = db.Column(db.Integer, nullable = True, default = 0)
+    date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now(),
+                     index = True)
+    time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
+                     onupdate = lambda: datetime.time(get_now()),
+                     index = True)
+    create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
+    message = db.Column(db.String(20), nullable = False)
+
+    # todo 上限改为机器人参数，增加是否新人的输入
+    # todo  上限的判断提取成方法
+    @staticmethod
+    def create(botid, target_type, target_account, member_id, reporter_id, point: int, message, report_limit = 7,
+               member_limit = 2, **kwargs):
+        target = get_target_value(target_type, target_account)
+
+        result = Point.get_report_count(botid, target, member_id, reporter_id, get_now().strftime('%Y-%m-%d'))
+        if int(result[0]) + point > report_limit:
+            raise Exception('报点数超过了报点人今天累计的上限')
+        elif int(result[1]) + point > member_limit:
+            raise Exception('报点数超过了受报人接受累计的上限')
+
+        record = Point(botid = botid,
+                       target = target,
+                       member_id = member_id,
+                       member_name = '' if kwargs.get('member_name') is None else kwargs.get('member_name'),
+                       reporter_id = reporter_id,
+                       reporter_name = '' if kwargs.get('reporter_name') is None else kwargs.get('reporter_name'),
+                       point = point,
+                       message = message)
+        record.query.session.add(record)
+        record.query.session.commit()
+        return PointConfirm.create(botid, target_type, target_account, record.id, record.member_id, record.confirm_code)
+
+    @staticmethod
+    def get_report_count(botid, target, member_id, reporter_id, date):
+        return Point.query.session.query(
+            func.ifnull(
+                func.sum(Point.point), 0
+            ).label('reporter_count'),
+            func.ifnull(
+                func.sum(
+                    case(
+                        [(Point.member_id == member_id, Point.point)],
+                        else_ = 0
+                    )
+                ), 0
+            ).label("member_count")
+        ).filter(
+            Point.botid == botid,
+            Point.target == target,
+            Point.reporter_id == reporter_id,
+            Point.date == date,
+            Point.has_confirmed == 1
+
+        ).first()
+
+    @staticmethod
+    def confirm(id, report_limit = 7, member_limit = 2):
+        point = Point.query.get(id)
+
+        result = Point.get_report_count(point.botid, point.target, point.member_id, point.reporter_id, point.date)
+        if int(result[0]) + point.point > report_limit:
+            raise Exception('报点数超过了报点人今天累计的上限:'+str(report_limit))
+        elif int(result[1]) + point.point > member_limit:
+            raise Exception('报点数超过了受报人今天累计的上限:'+str(member_limit))
+
+        point.has_confirmed = 1
+        # Point.query.session.add(point)
+        Point.query.session.commit()
+
+        return point
+
+
+@pr.register_model(21)
+class PointConfirm(db.Model):
+    __bind_key__ = 'score'
+    __tablename__ = 'point_confirm'
+
+    id = db.Column(db.Integer, primary_key = True, autoincrement = True)
+    botid = db.Column(db.String(20), nullable = False)
+    target = db.Column(db.String(20), nullable = False)
+    point_id = db.Column(db.Integer, nullable = False)
+    member_id = db.Column(db.String(20), nullable = False)
+    confirm_code = db.Column(db.String(4), nullable = False, default = lambda: generate_key(4, False, False, True))
+    expire_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now() + timedelta(minutes = 30))
+
+    @staticmethod
+    def create(botid, target_type, target_account, point_id, member_id, confirm_code):
+        PointConfirm.clear(botid, target_type, target_account)
+        target = get_target_value(target_type, target_account)
+        record = PointConfirm(botid = botid,
+                              target = target,
+                              point_id = point_id,
+                              member_id = member_id,
+                              confirm_code = confirm_code)
+        PointConfirm.query.session.add(record)
+        PointConfirm.query.session.commit()
+        return record
+
+    @staticmethod
+    def clear(botid, target_type, target_account):
+        target = get_target_value(target_type, target_account)
+        PointConfirm.query.filter(PointConfirm.botid == botid,
+                                  PointConfirm.target == target,
+                                  PointConfirm.expire_at <= get_now()).delete()
+        PointConfirm.query.session.commit()
+
+    @staticmethod
+    def confirm(botid, target_type, target_account, member_id, confirm_code, report_limit = 7, member_limit = 2):
+        PointConfirm.clear(botid, target_type, target_account)
+        target = get_target_value(target_type, target_account)
+        records = PointConfirm.query.filter(PointConfirm.botid == botid,
+                                            PointConfirm.target == target,
+                                            PointConfirm.member_id == member_id,
+                                            PointConfirm.confirm_code == confirm_code).all()
+        if len(records) > 0:
+            # for record in records:
+            record = records[0]
+            point=Point.confirm(record.point_id, report_limit, member_limit)
+            PointConfirm.query.session.delete(record)
+            PointConfirm.query.session.commit()
+            return point
+        else:
+            raise Exception('确认码[' + confirm_code + ']无效，请检查是否已经过期')
+
+# View-----------------------------------------------------------------------------------------------------
+@pr.register_view()
+class PointView(CVAdminModelView):
+    can_create = False
+    can_edit = False
+    can_delete = False
+    page_size = 100
+    column_filters = ('target', 'member_id', 'member_name', 'reporter_id', 'reporter_name', 'has_confirmed', 'date')
+    column_list = (
+        'botid', 'target', 'member', 'reporter', 'point', 'confirm_code', 'has_confirmed',
+        'date', 'time', 'update_at', 'message')
+    column_searchable_list = ('member_name', 'reporter_name')
+    column_labels = dict(botid = '机器人', target = '目标',
+                         member = '成员', member_id = '成员账号', member_name = '成员名称',
+                         reporter = '报点人', reporter_id = '报点人账号', reporter_name = '报点人名称',
+                         point = '点数', confirm_code = '确认码', has_confirmed = '已经确认',
+                         date = '日期', time = '时间', create_at = '创建时间', update_at = '更新时间',
+                         message = '消息')
+    column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             target = lambda v, c, m, p: get_target_display(m.target),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             reporter = lambda v, c, m, p: m.reporter_id + ' : ' + get_omit_display(m.reporter_name),
+                             member_name = lambda v, c, m, p: get_omit_display(m.member_name),
+                             has_confirmed = lambda v, c, m, p: get_yesno_display(m.has_confirmed),
+                             date = lambda v, c, m, p: display_datetime(m.create_at, False),
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at),
+                             message = lambda v, c, m, p: get_omit_display(m.message))
+
+    column_default_sort = ('id', True)
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '报点记录', '报点管理')
+
+# todo point的内容显示为记录详情
+@pr.register_view()
+class PointConfirmView(CVAdminModelView):
+    can_create = False
+    can_edit = False
+    can_delete = True
+    page_size = 100
+    column_filters = ('target', 'expire_at')
+    column_list = (
+        'botid', 'target', 'point', 'confirm_code', 'expire_at')
+    column_searchable_list = ('confirm_code',)
+    column_labels = dict(botid = '机器人', target = '目标',
+                         point = '报点记录', confirm_code = '确认码', expire_at = '过期时间')
+    column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             target = lambda v, c, m, p: get_target_display(m.target),
+                             point = lambda v, c, m, p: m.point_id,
+                             expire_at = lambda v, c, m, p: display_datetime(m.expire_at))
+
+    column_default_sort = ('id', True)
+
+    def __init__(self, model, session):
+        CVAdminModelView.__init__(self, model, session, '待确认队列', '报点管理')
+
+
+# Control--------------------------------------------------------------------------------------------------
+@ac.register_api('/pointreport', endpoint = 'pointreport')
+class PointAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def post(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('member_id', required = True, help = '请求中必须包含member_id')
+            parser.add_argument('member_name')
+            parser.add_argument('reporter_id', required = True, help = '请求中必须包含reporter_id')
+            parser.add_argument('reporter_name')
+            parser.add_argument('point', type = int, required = True, choices = (1, 2), help = '请求中必须包含point,且只能为1或2')
+            parser.add_argument('message', required = True, help = '请求中必须包含message')
+            parser.add_argument('report_limit', type = int)
+            parser.add_argument('member_limit', type = int)
+            args = parser.parse_args()
+            kwargs = {}
+            kwargs['member_name'] = args['member_name']
+            kwargs['reporter_name'] = args['reporter_name']
+            if args['report_limit'] is not None: kwargs['report_limit'] = args['report_limit']
+            if args['member_limit'] is not None: kwargs['member_limit'] = args['member_limit']
+            record = Point.create(ac.get_bot(),
+                                  args['target_type'],
+                                  args['target_account'],
+                                  args['member_id'],
+                                  args['reporter_id'],
+                                  args['point'],
+                                  args['message'],
+                                  **kwargs)
+            if record is not None:
+                return ac.success(botid = record.botid,
+                                  target = record.target,
+                                  reporter_id = args['reporter_id'],
+                                  reporter_name = args['reporter_name'],
+                                  member_id = args['member_id'],
+                                  member_name = args['member_name'],
+                                  point = args['point'],
+                                  confirm_code = record.confirm_code,
+                                  expire_at = output_datetime(record.expire_at))
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)
+
+
+@ac.register_api('/pointconfirm', endpoint = 'pointconfirm')
+class PointConfirmAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def patch(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('member_id', required = True, help = '请求中必须包含member_id')
+            parser.add_argument('confirm_code', required = True, help = '请求中必须包含confirm_code')
+            parser.add_argument('report_limit', type = int)
+            parser.add_argument('member_limit', type = int)
+            args = parser.parse_args()
+            kwargs = {}
+            if args['report_limit'] is not None: kwargs['report_limit'] = args['report_limit']
+            if args['member_limit'] is not None: kwargs['member_limit'] = args['member_limit']
+            record = PointConfirm.confirm(ac.get_bot(),
+                                          args['target_type'],
+                                          args['target_account'],
+                                          args['member_id'],
+                                          args['confirm_code'],
+                                          **kwargs)
+            if record is not None:
+                return ac.success(botid = record.botid,
+                                  target = record.target,
+                                  reporter_id = record.reporter_id,
+                                  reporter_name = record.reporter_name,
+                                  member_id = record.member_id,
+                                  member_name = record.member_name,
+                                  point = record.point,
+                                  has_confirmed = record.has_confirmed)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据创建失败'))
+        except Exception as e:
+            return ac.fault(error = e)

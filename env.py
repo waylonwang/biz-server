@@ -5,7 +5,8 @@ def get_config():
     config = {
         'db_binds': {
             'default': 'default.sqlite',
-            'score': 'score.sqlite'
+            'score': 'score.sqlite',
+            'scheduler': 'scheduler.sqlite'
         }
     }
     return config

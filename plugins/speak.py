@@ -1,9 +1,12 @@
 import re
 from datetime import datetime
 
+
 from flask_admin.form import rules
 from flask_restful import reqparse, Resource
-from sqlalchemy import func, desc, case
+from sqlalchemy import func, desc, case, UniqueConstraint
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 from wtforms import validators, fields
 
 import api_control as ac
@@ -48,7 +51,7 @@ class Speak(db.Model):
         record = Speak(botid = botid,
                        target = target,
                        sender_id = sender_id,
-                       sender_name = '' if kwargs.get('sender_name') == None else kwargs.get('sender_name'),
+                       sender_name = '' if kwargs.get('sender_name') is None else kwargs.get('sender_name'),
                        # date = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%Y-%m-%d') if kwargs.get(
                        #     'date') is None else kwargs.get('date'),
                        # time = datetime.now(tz = timezone('Asia/Shanghai')).strftime('%H:%M') if kwargs.get(
@@ -154,8 +157,6 @@ class Speak(db.Model):
         ).first()
 
 
-# todo edit form优化状态显示
-# todo 支持create
 @pr.register_model(73)
 class SpeakWash(db.Model):
     __bind_key__ = 'score'
@@ -173,7 +174,7 @@ class SpeakWash(db.Model):
     @staticmethod
     def create(botid, rule, replace, remark):
         wash = SpeakWash.find(botid, rule)
-        if wash == None:
+        if wash is None:
             wash = SpeakWash(botid = botid,
                              rule = rule,
                              replace = replace,
@@ -188,7 +189,7 @@ class SpeakWash(db.Model):
     @staticmethod
     def update(botid, rule, **kwargs):
         wash = SpeakWash.find(botid, rule)
-        if wash != None:
+        if wash is not None:
             if kwargs.get('replace'): wash.replace = kwargs.get('replace')
             if kwargs.get('status'): wash.status = kwargs.get('status')
             if kwargs.get('remark'): wash.remark = kwargs.get('remark')
@@ -229,9 +230,32 @@ class SpeakCount(db.Model):
     target = db.Column(db.String(20), nullable = False)
     sender_id = db.Column(db.String(20), nullable = False)
     sender_name = db.Column(db.String(20), nullable = False)
-    date = db.Column(db.String(20), nullable = False)
+    date = db.Column(db.Date, nullable = False)
     message_count = db.Column(db.Integer, nullable = False)
     vaild_count = db.Column(db.Integer, nullable = False)
+
+    __table_args__ = (UniqueConstraint('botid', 'target', 'sender_id', 'date', name = 'speak_daily_count_uc'),)
+
+    @staticmethod
+    def do(botid, target_type, target_account, date):
+        target = get_target_value(target_type, target_account)
+        session = sessionmaker(bind = db.get_engine(bind = 'score'))()
+        try:
+            session.execute(
+                'INSERT INTO speak_count(botid,target,sender_id,sender_name,date,message_count,vaild_count) '
+                'SELECT t1.botid,t1.target,t1.sender_id,t1.sender_name,t1.date,'
+                'SUM(1) message_count,SUM(CASE WHEN t1.washed_chars < t2.value THEN 0 ELSE 1 END) vaild_count '
+                'FROM speak t1 LEFT JOIN bot_param t2 ON t1.botid=t2.botid AND t2.name="baseline" '
+                'WHERE t1.botid = :botid AND t1.target = :target AND t1.date = :date '
+                'GROUP BY t1.botid,t1.target,t1.sender_id,t1.date',
+                {'botid': botid, 'target': target, 'date': date})
+            session.commit()
+        except IntegrityError as e:
+            raise Exception(date + '已执行过此任务')
+        except Exception as e:
+            raise e
+
+        return True
 
 
 db.create_all()
@@ -246,21 +270,23 @@ class SpeakView(CVAdminModelView):
     page_size = 100
     column_filters = ('target', 'sender_id', 'sender_name', 'date', 'washed_chars')
     column_list = (
-        'botid', 'target', 'sender_id', 'sender_name', 'date', 'time', 'message', 'washed_text', 'washed_chars')
+        'botid', 'target', 'sender', 'date', 'time', 'message', 'washed_text', 'washed_chars')
     column_searchable_list = ('sender_name', 'message')
     column_labels = dict(botid = '机器人', target = '目标',
-                         sender_id = '发送者QQ', sender_name = '发送者名称',
+                         sender = '成员', sender_id = '成员账号', sender_name = '成员名称',
                          date = '日期', time = '时间',
                          message = '消息原文', washed_text = '有效消息内容', washed_chars = '有效消息字数')
     # column_formatters = dict(date=lambda v, c, m, p: datetime.fromtimestamp(m.create_at).strftime('%Y-%m-%d'),
     #                          time=lambda v, c, m, p: datetime.fromtimestamp(m.update_at).strftime('%Y-%m-%d'))
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             sender_name = lambda v, c, m, p: get_omit_display(m.sender_name),
+                             sender = lambda v, c, m, p: m.sender_id + ' : ' + get_omit_display(m.sender_name),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'),
                              message = lambda v, c, m, p: get_omit_display(m.message),
                              washed_text = lambda v, c, m, p: get_omit_display(m.washed_text))
+
+    column_default_sort = ('id', True)
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '消息记录', '消息管理')
@@ -281,6 +307,8 @@ class SpeakView(CVAdminModelView):
             return super(SpeakView, self).get_count_query()
 
 
+# todo edit form优化状态显示
+# todo 支持create
 @pr.register_view()
 class SpeakWashView(CVAdminModelView):
     column_filters = ('status',)
@@ -340,14 +368,17 @@ class SpeakWashView(CVAdminModelView):
 
 @pr.register_view()
 class SpeakCountView(CVAdminModelView):
+    can_edit = False
     column_filters = ('sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
-    column_list = ('botid', 'target', 'sender_id', 'sender_name', 'date', 'message_count', 'vaild_count')
-    column_labels = dict(botid = '机器人', target = '目标', sender_id = '发送者QQ', sender_name = '发送者名称',
+    column_list = ('botid', 'target', 'sender', 'date', 'message_count', 'vaild_count')
+    column_labels = dict(botid = '机器人', target = '目标',
+                         sender = '成员', sender_id = '成员账号', sender_name = '成员名称',
                          date = '日期', message_count = '消息总数', vaild_count = '有效消息总数')
     column_formatters = dict(
         botid = lambda v, c, m, p: get_botname(m.botid),
-        sender_name = lambda v, c, m, p: get_omit_display(m.sender_name),
-        date = lambda v, c, m, p: datetime.fromtimestamp(m.create_at).strftime('%Y-%m-%d'))
+        target = lambda v, c, m, p: get_target_display(m.target),
+        sender = lambda v, c, m, p: m.sender_id + ' : ' + get_omit_display(m.sender_name),
+        date = lambda v, c, m, p: m.date.strftime('%Y-%m-%d'))
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '发言统计', '统计分析')
@@ -515,6 +546,8 @@ class SpeakWashAPI(Resource):
 
 @ac.register_api('/speakwashdo', endpoint = 'speakwashdo')
 class SpeakWashDoAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
     def patch(self):
         try:
             parser = reqparse.RequestParser()
@@ -540,6 +573,8 @@ class SpeakWashDoAPI(Resource):
 
 @ac.register_api('/speakwashupdate', endpoint = 'speakwashupdate')
 class SpeakWashUpdateAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
     def patch(self):
         try:
             parser = reqparse.RequestParser()
@@ -563,6 +598,8 @@ class SpeakWashUpdateAPI(Resource):
 
 @ac.register_api('/speaktop', endpoint = 'speaktop')
 class SpeakTopAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
     def get(self):
         try:
             parser = reqparse.RequestParser()
@@ -598,6 +635,8 @@ class SpeakTopAPI(Resource):
 
 @ac.register_api('/speakcount', endpoint = 'speakcount')
 class SpeakCountAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
     def get(self):
         try:
             parser = reqparse.RequestParser()
@@ -622,12 +661,16 @@ class SpeakCountAPI(Resource):
                                   date_to = args['date_to'],
                                   count_full = record.cnt_full if record.cnt_full is not None else 0,
                                   count_valid = record.cnt_valid if record.cnt_valid is not None else 0)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据统计失败'))
         except Exception as e:
             return ac.fault(error = e)
 
 
 @ac.register_api('/speaktotal', endpoint = 'speaktotal')
 class SpeakTotalAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
     def get(self):
         try:
             parser = reqparse.RequestParser()
@@ -649,5 +692,33 @@ class SpeakTotalAPI(Resource):
                                   date_to = args['date_to'],
                                   count_full = record.cnt_full if record.cnt_full is not None else 0,
                                   count_valid = record.cnt_valid if record.cnt_valid is not None else 0)
+            else:
+                return ac.fault(error = Exception('未知原因导致数据统计失败'))
+        except Exception as e:
+            return ac.fault(error = e)
+
+
+@ac.register_api('/speakdailycount', endpoint = 'speakdailycount')
+class SpeakCountAPI(Resource):
+    method_decorators = [ac.require_apikey]
+
+    def get(self):
+        try:
+            parser = reqparse.RequestParser()
+            parser.add_argument('target_type', required = True, help = '请求中必须包含target_type')
+            parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
+            parser.add_argument('date', required = True, help = '请求中必须包含date')
+
+            args = parser.parse_args()
+            result = SpeakCount.do(ac.get_bot(),
+                                   args['target_type'],
+                                   args['target_account'],
+                                   args['date'])
+            if result:
+                return ac.success(target_type = args['target_type'],
+                                  target_account = args['target_account'],
+                                  date = args['date'])
+            else:
+                return ac.fault(error = Exception('未知原因导致数据操作失败'))
         except Exception as e:
             return ac.fault(error = e)

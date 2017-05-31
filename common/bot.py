@@ -72,7 +72,7 @@ class BotView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '机器人', '系统设置')
 
     def is_accessible(self):
-        from common.login_control import admin_permission
+        from common.login import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -91,7 +91,6 @@ class BotView(CVAdminModelView):
         return form
 
 
-# todo edit form中增加一个botname显示字段
 @pr.register_view()
 class BotAssignView(CVAdminModelView):
     can_create = True
@@ -104,14 +103,14 @@ class BotAssignView(CVAdminModelView):
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at))
-    form_edit_rules = ('botid', 'username', 'remark')
+    form_edit_rules = ('botid', 'botname', 'username', 'remark')
     form_create_rules = ('botid', 'username', 'remark')
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '机器人分派', '系统设置')
 
     def is_accessible(self):
-        from common.login_control import admin_permission
+        from common.login import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -141,8 +140,13 @@ class BotAssignView(CVAdminModelView):
     def get_edit_form(self):
         form = self.scaffold_form()
         form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+        form.botname = fields.StringField('机器人名称', render_kw = {'readonly': True})
+        # form.botname.data = get_botname(form.botid.data)
         form.username = fields.StringField('用户名', render_kw = {'readonly': True})
         return form
+
+    def on_form_prefill(self, form, id):
+        form.botname.data = get_botname(id.split(',')[0])
 
 
 db.create_all()

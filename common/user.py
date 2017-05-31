@@ -190,7 +190,7 @@ class UserView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '用户', '系统设置')
 
     def is_accessible(self):
-        from common.login_control import admin_permission
+        from common.login import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
@@ -262,7 +262,7 @@ class RoleView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '角色', '系统设置')
 
     def is_accessible(self):
-        from common.login_control import admin_permission
+        from common.login import admin_permission
         if admin_permission.can():
             return login.current_user.is_authenticated
         else:
