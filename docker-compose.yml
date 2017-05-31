@@ -4,7 +4,7 @@ services:
     image: cloudvalley/biz-server
     container_name: biz-server
     network_mode: 'container:msg-server'
-        expose:
+    expose:
       - '5800'
     ports:
       - '5800:5800'
