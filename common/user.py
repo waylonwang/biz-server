@@ -32,8 +32,9 @@ class Role(db.Model):
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
 
-    def __init__(self, name):
+    def __init__(self, name, description = None):
         self.name = name
+        self.description = description
 
     def __repr__(self):
         # return "<Model Role `{}`>".format(self.name)
@@ -61,7 +62,7 @@ class User(db.Model):
     username = db.Column(db.String(255), nullable = False, unique = True)
     password = db.Column(db.String(64), nullable = True)
     email = db.Column(db.String(120), nullable = True)
-    active = db.Column(db.Integer, nullable = False, index = True)
+    active = db.Column(db.Integer, nullable = False, default = 1, index = True)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
@@ -71,13 +72,14 @@ class User(db.Model):
         secondary = users_roles,
         backref = db.backref('users', lazy = 'dynamic'))
 
-    def __init__(self, username = None, password = None, rolename = "default"):
+    def __init__(self, username = None, password = None, rolename = "default", remark = None):
         self.username = username
         self.password = password
 
         # Setup the default-role for user.
         role = Role.query.filter_by(name = rolename).one()
         self.roles.append(role)
+        self.remark = remark
 
     def __repr__(self):
         """Define the string format for instance of User."""
@@ -131,23 +133,16 @@ def init():
     db.create_all()
     user_cnt = User.find_by_role('admin')
     if user_cnt is None or user_cnt.cnt == 0:
-        admin_role = Role(name = "admin")
-        default_role = Role(name = "default")
+        admin_role = Role(name = 'admin', description = '管理员角色')
+        user_role = Role(name = 'user', description = '缺省用户角色')
         db.session.add(admin_role)
-        db.session.add(default_role)
+        db.session.add(user_role)
         db.session.commit()
-        admin_user = User(username = "admin", password = generate_password_hash("admin"), rolename = "admin")
+        admin_user = User(username = 'admin', password = generate_password_hash('admin'), rolename = 'admin',
+                          remark = '超级管理员')
         db.session.add(admin_user)
         db.session.commit()
 
-    return
-
-
-def create_test_data():
-    db.create_all()
-    admin_user = User(username = "3546065794", password = generate_password_hash("test"), rolename = "default")
-    db_control.get_db().session.add(admin_user)
-    db_control.get_db().session.commit()
     return
 
 
