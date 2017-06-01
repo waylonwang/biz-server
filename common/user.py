@@ -32,9 +32,12 @@ class Role(db.Model):
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
 
-    def __init__(self, name, description = None):
-        self.name = name
-        self.description = description
+    def __init__(self, **kwargs):
+        if kwargs is not None:
+            if kwargs.get('name', None) is not None:
+                self.name = kwargs['name']
+            if kwargs.get('description', None) is not None:
+                self.description = kwargs['description']
 
     def __repr__(self):
         # return "<Model Role `{}`>".format(self.name)
@@ -72,14 +75,22 @@ class User(db.Model):
         secondary = users_roles,
         backref = db.backref('users', lazy = 'dynamic'))
 
-    def __init__(self, username = None, password = None, rolename = "default", remark = None):
-        self.username = username
-        self.password = password
+    def __init__(self, **kwargs):
+        if kwargs is not None:
+            if kwargs.get('username', None) is not None:
+                self.username = kwargs['username']
 
-        # Setup the default-role for user.
-        role = Role.query.filter_by(name = rolename).one()
-        self.roles.append(role)
-        self.remark = remark
+                if kwargs.get('password', None) is None:
+                    kwargs['password'] = 'password'
+                self.password = kwargs['password']
+
+                if kwargs.get('rolename', None) is None:
+                    kwargs['rolename'] = 'user'
+                role = Role.query.filter_by(name = kwargs['rolename']).one()
+                self.roles.append(role)
+
+                if kwargs.get('remark', None) is not None:
+                    self.remark = kwargs['remark']
 
     def __repr__(self):
         """Define the string format for instance of User."""

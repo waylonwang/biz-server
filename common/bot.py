@@ -118,22 +118,29 @@ class BotAssignView(CVAdminModelView):
 
     def get_create_form(self):
         form = self.scaffold_form()
-        bots = Bot.findall()
-        if bots is not None:
-            _bot_list = {}
-            for bot in bots:
-                _bot_list[bot.id] = bot.name
-            form.botid = fields.SelectField('机器人', [validators.required(message = '机器人是必填字段')],
-                                            coerce = str, choices = _bot_list.items())
+
+        def bot_query_factory():
+            return [r.id for r in Bot.findall()]
+
+        def bot_get_pk(obj):
+            return obj
+
+        def bot_get_label(obj):
+            return Bot.find(obj).name
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
+                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk)
 
         from common.user import User
-        users = User.findall()
-        if users is not None:
-            _user_list = {}
-            for user in users:
-                _user_list[user.username] = user.username
-            form.username = fields.SelectField('用户名', [validators.required(message = '用户名是必填字段')],
-                                               coerce = str, choices = _user_list.items())
+        def user_query_factory():
+            return [r.username for r in User.findall()]
+
+        def user_get_pk(obj):
+            return obj
+
+        form.username = QuerySelectField('用户名', [validators.required(message = '用户名是必填字段')],
+                                         query_factory = user_query_factory, get_pk = user_get_pk)
 
         return form
 
