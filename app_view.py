@@ -125,4 +125,4 @@ def init(app):
             warnings.filterwarnings('ignore', 'Fields missing from ruleset', UserWarning)
             admin.add_view(view_class(model_class, db_control.get_db().session))
 
-    admin.add_view(CVAdminFileView(get_db_dir(), '/data/db/', name = '数据库文件', category = '系统设置'))
+    admin.add_view(CVAdminFileView(get_db_dir(), '', name = '数据库文件', category = '系统设置'))
