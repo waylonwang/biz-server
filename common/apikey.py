@@ -16,7 +16,7 @@ db = db_control.get_db()
 
 
 # todo 增加更新action
-@pr.register_model(95)
+@pr.register_model(96)
 class APIKey(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'apikey'
@@ -36,6 +36,16 @@ class APIKey(db.Model):
     def find_by_bot(bitid):
         return APIKey.query.filter_by(bitid = bitid).first()
 
+    @staticmethod
+    def destroy(botid):
+        '''
+        销毁机器人的API Key
+        :param botid: 机器人id
+        :return: 是否成功
+        '''
+        APIKey.query.filter_by(botid = botid).delete()
+        APIKey.query.session.commit()
+        return True
 
 @pr.register_view()
 class APIKeyView(CVAdminModelView):
@@ -72,7 +82,7 @@ class APIKeyView(CVAdminModelView):
         def query_factory():
             from flask_login import current_user
             from common.bot import BotAssign
-            return [r.botid for r in BotAssign.find_by_user(current_user.username)]
+            return [r.id for r in Bot.findall()]
 
         def get_pk(obj):
             return obj

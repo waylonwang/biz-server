@@ -1,10 +1,9 @@
 import re
 from datetime import datetime
 
-
 from flask_admin.form import rules
 from flask_restful import reqparse, Resource
-from sqlalchemy import func, desc, case, UniqueConstraint
+from sqlalchemy import func, desc, case, UniqueConstraint, bindparam
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from wtforms import validators, fields
@@ -12,10 +11,15 @@ from wtforms import validators, fields
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, display_datetime, get_botname, get_target_value, get_omit_display, get_target_display
+from common.basedata import Basedata
+from common.bot import bot_registry
+from common.util import get_now, display_datetime, get_botname, get_target_value, get_omit_display, get_target_display,\
+    get_list_by_botassign, get_list_count_by_botassign
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
+
+br = bot_registry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
@@ -31,15 +35,10 @@ class Speak(db.Model):
     target = db.Column(db.String(20), nullable = False)
     sender_id = db.Column(db.String(20), nullable = False)
     sender_name = db.Column(db.String(20), nullable = False)
-    # date = db.Column(db.String(20), nullable = False)
-    # time = db.Column(db.String(20), nullable = False)
-    # create_at = db.Column(db.Integer, nullable = False, default = int(datetime.now(tz = utc).timestamp()))
-    date = db.Column(db.Date, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now().date,
-                     index = True)
-    time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()),
-                     onupdate = lambda: datetime.time(get_now()),
-                     index = True)
+    date = db.Column(db.Date, nullable = False, default = lambda: get_now(), index = True)
+    time = db.Column(db.Time, nullable = False, default = lambda: datetime.time(get_now()), index = True)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
+    update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     message = db.Column(db.String(20), nullable = False)
     washed_text = db.Column(db.String(20), nullable = False)
     washed_chars = db.Column(db.Integer, nullable = False)
@@ -76,13 +75,33 @@ class Speak(db.Model):
 
     @staticmethod
     def updatewash(botid, target_type, target_account, date_from, date_to):
+        start = get_now()
         records = Speak.find_by_date(botid, target_type, target_account, date_from, date_to)
+        # texts = {record.id: record.message for record in records}
         count = len(records)
-        for record in records:
-            record.washed_text = SpeakWash.do(record.botid, record.message)
-            record.washed_chars = len(record.washed_text)
-        Speak.query.session.commit()
-        return count
+        texts = {str(record.id) + '>>>END>>>' + record.message for record in records}
+        text = '<<<BEGIN<<<'.join(texts)
+        ws = SpeakWash.do(botid, text)
+
+        data = []
+        wl = ws.split('<<<BEGIN<<<')
+        for ts in wl:
+            tl = ts.split('>>>END>>>')
+            data.append({'b_id': tl[0], 'washed_text': tl[1], 'washed_chars': len(tl[1])})
+
+        speaktable = Speak.metadata.tables['speak']
+
+        upt = speaktable.update().\
+            where(speaktable.c.id == bindparam('b_id')).\
+            values(washed_text = bindparam('washed_text'), washed_chars = bindparam('washed_chars'))
+
+        conn = db.get_engine(bind = 'score').connect()
+        conn.execute(upt, data)
+        conn.close()
+
+        duration = round((get_now() - start).total_seconds(), 1)
+
+        return count, duration
 
     @staticmethod
     def find_by_date(botid, target_type, target_account, date_from, date_to):
@@ -164,33 +183,34 @@ class SpeakWash(db.Model):
 
     id = db.Column(db.Integer, primary_key = True, autoincrement = True)
     botid = db.Column(db.String(20), nullable = False)
-    rule = db.Column(db.String(200), nullable = False)
-    replace = db.Column(db.String(200), nullable = False)
-    status = db.Column(db.Integer, nullable = False)
+    rule = db.Column(db.String(20), nullable = False)
+    # replace = db.Column(db.String(200), nullable = False)l
+    surplus = db.Column(db.Integer, nullable = False, default = 0)
+    status = db.Column(db.Integer, nullable = False, default = 1)
     create_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now())
     update_at = db.Column(db.DateTime, nullable = False, default = lambda: get_now(), onupdate = lambda: get_now())
     remark = db.Column(db.String(255), nullable = True)
 
     @staticmethod
-    def create(botid, rule, replace, remark):
+    def create(botid, rule, surplus, remark):
         wash = SpeakWash.find(botid, rule)
         if wash is None:
             wash = SpeakWash(botid = botid,
                              rule = rule,
-                             replace = replace,
+                             surplus = surplus,
                              status = 1,
                              remark = remark)
             wash.query.session.add(wash)
             wash.query.session.commit()
         else:
-            wash = SpeakWash.update(botid, rule, replace = replace, remark = remark)
+            wash = SpeakWash.update(botid, rule, surplus = surplus, remark = remark)
         return wash
 
     @staticmethod
     def update(botid, rule, **kwargs):
         wash = SpeakWash.find(botid, rule)
         if wash is not None:
-            if kwargs.get('replace'): wash.replace = kwargs.get('replace')
+            if kwargs.get('surplus'): wash.surplus = kwargs.get('surplus')
             if kwargs.get('status'): wash.status = kwargs.get('status')
             if kwargs.get('remark'): wash.remark = kwargs.get('remark')
             wash.query.session.commit()
@@ -198,7 +218,7 @@ class SpeakWash(db.Model):
 
     @staticmethod
     def findall(botid):
-        return SpeakWash.query.filter_by(botid = botid).all()
+        return SpeakWash.query.filter_by(botid = botid, status = 1).all()
 
     @staticmethod
     def find(botid, rule):
@@ -214,9 +234,19 @@ class SpeakWash(db.Model):
     def do(botid, text):
         washlist = SpeakWash.findall(botid)
         for wash in washlist:
-            p = re.compile(r'' + wash.rule)
-            text = p.sub(r'' + wash.replace, text)
+            basedata = Basedata.find_by_code(wash.rule)
+            rule = basedata.value
+            replace = ''.join('_' * wash.surplus)
+            p = re.compile(r'' + rule)
+            text = p.sub(r'' + replace, text)
         return text
+
+    @staticmethod
+    @br.register_destroy()
+    def destroy(botid):
+        for r in SpeakWash.findall(botid):
+            SpeakWash.delete(botid, r.rule)
+        return True
 
 
 # todo 实现计划调度自动计算speak count
@@ -272,7 +302,7 @@ class SpeakView(CVAdminModelView):
     column_list = (
         'botid', 'target', 'sender', 'date', 'time', 'message', 'washed_text', 'washed_chars')
     column_searchable_list = ('sender_name', 'message')
-    column_labels = dict(botid = '机器人', target = '目标',
+    column_labels = dict(id = 'ID', botid = '机器人', target = '目标',
                          sender = '成员', sender_id = '成员账号', sender_name = '成员名称',
                          date = '日期', time = '时间',
                          message = '消息原文', washed_text = '有效消息内容', washed_chars = '有效消息字数')
@@ -292,76 +322,115 @@ class SpeakView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '消息记录', '消息管理')
 
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(SpeakView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakView, self).get_query()
+        return get_list_by_botassign(Speak, SpeakView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakView, self).get_count_query()
+        return get_list_count_by_botassign(Speak, SpeakView, self)
 
 
-# todo edit form优化状态显示
-# todo 支持create
 @pr.register_view()
 class SpeakWashView(CVAdminModelView):
+    can_create = True
+    can_delete = True
     column_filters = ('status',)
-    column_labels = dict(id = '规则ID', botid = '机器人', rule = '匹配规则', replace = '清洗结果', status = '状态',
+    column_labels = dict(id = '规则ID', botid = '机器人', rule = '匹配规则', surplus = '清洗余量', status = '状态',
                          create_at = '创建时间', update_at = '更新时间', remark = '备注')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
+                             rule = lambda v, c, m, p: Basedata.find_by_code(m.rule).name,
                              status = lambda v, c, m, p: '启用' if m.status == 1 else '禁用',
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at))
 
     form_create_rules = (
-        rules.FieldSet(('botid', 'active', 'remark'), '基本信息'),
-        rules.FieldSet(('rule', 'replace'), '规则设置')
+        rules.FieldSet(('botid', 'status', 'remark'), '基本信息'),
+        rules.FieldSet(('rule', 'surplus'), '规则设置')
     )
 
     form_edit_rules = (
-        rules.FieldSet(('botid', 'active', 'remark'), '基本信息'),
-        rules.FieldSet(('rule', 'replace'), '规则设置')
+        rules.FieldSet(('botid', 'status', 'remark'), '基本信息'),
+        rules.FieldSet(('rule', 'surplus'), '规则设置')
     )
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '发言清洗规则', '机器人设置')
 
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(SpeakWashView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakWashView, self).get_query()
+        return get_list_by_botassign(SpeakWash, SpeakWashView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakWashView, self).get_count_query()
+        return get_list_count_by_botassign(SpeakWash, SpeakWashView, self)
 
     def get_create_form(self):
         form = self.scaffold_form()
-        form.botid = fields.StringField('机器人ID', [validators.required(message = '机器人ID是必填字段')])
-        form.rule = fields.StringField('匹配规则', [validators.required(message = '匹配规则是必填字段')])
-        form.replace = fields.StringField('清洗结果', [validators.required(message = '清洗结果是必填字段')])
-        form.active = fields.BooleanField('启用状态')
+
+        def bot_query_factory():
+            from flask_login import current_user
+            from common.bot import BotAssign
+            return [r.botid for r in BotAssign.find_by_user(current_user.username)]
+
+        def bot_get_pk(obj):
+            return obj
+
+        def bot_get_label(obj):
+            from common.bot import Bot
+            return Bot.find(obj).name
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
+                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk)
+
+        # form.botid = fields.StringField('机器人ID', [validators.required(message = '机器人ID是必填字段')])
+
+        def rule_query_factory():
+            return [r.code for r in Basedata.find_by_type(2)]
+
+        def rule_get_pk(obj):
+            return obj
+
+        def rule_get_label(obj):
+            return Basedata.find_by_code(obj).name
+
+        form.rule = QuerySelectField('匹配规则', [validators.required(message = '匹配规则是必填字段')],
+                                     query_factory = rule_query_factory, get_label = rule_get_label,
+                                     get_pk = rule_get_pk)
+        form.surplus = fields.IntegerField('清洗余量', [validators.InputRequired(message = '清洗余量是必填字段')])
+        form.status = fields.BooleanField('启用状态', default = True)
         form.remark = fields.StringField('备注')
         return form
 
     def get_edit_form(self):
         form = self.scaffold_form()
-        form.botid = fields.StringField('机器人ID', [validators.required(message = '机器人ID是必填字段')])
-        form.rule = fields.StringField('匹配规则', [validators.required(message = '匹配规则是必填字段')])
-        form.replace = fields.StringField('清洗结果', [validators.required(message = '清洗结果是必填字段')])
-        form.active = fields.BooleanField('启用状态')
+
+        def bot_query_factory():
+            from flask_login import current_user
+            from common.bot import BotAssign
+            return [r.botid for r in BotAssign.find_by_user(current_user.username)]
+
+        def bot_get_pk(obj):
+            return obj
+
+        def bot_get_label(obj):
+            from common.bot import Bot
+            return Bot.find(obj).name
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
+                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk)
+
+        def rule_query_factory():
+            return [r.code for r in Basedata.find_by_type(2)]
+
+        def rule_get_pk(obj):
+            return obj
+
+        def rule_get_label(obj):
+            return Basedata.find_by_code(obj).name
+
+        form.rule = QuerySelectField('匹配规则', [validators.required(message = '匹配规则是必填字段')],
+                                     query_factory = rule_query_factory, get_label = rule_get_label,
+                                     get_pk = rule_get_pk)
+        form.surplus = fields.IntegerField('清洗余量', [validators.InputRequired(message = '清洗余量是必填字段')])
+        form.status = fields.BooleanField('启用状态', default = True)
         form.remark = fields.StringField('备注')
         return form
 
@@ -384,19 +453,10 @@ class SpeakCountView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '发言统计', '统计分析')
 
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(SpeakCountView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakCountView, self).get_query()
+        return get_list_by_botassign(SpeakCount, SpeakCountView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(SpeakCountView, self).get_count_query()
+        return get_list_count_by_botassign(SpeakCount, SpeakCountView, self)
 
 
 # Control--------------------------------------------------------------------------------------------------
@@ -589,7 +649,8 @@ class SpeakWashUpdateAPI(Resource):
                                       args['date_from'],
                                       args['date_to'])
             if result is not None:
-                return ac.success(update_count = result)
+                return ac.success(update_count = result[0],
+                                  update_duartion = result[1])
             else:
                 return ac.fault(error = Exception('未知原因导致数据创建失败'))
         except Exception as e:

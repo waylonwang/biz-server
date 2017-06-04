@@ -3,7 +3,7 @@ from flask import url_for
 from flask_admin.form import rules
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash
-from wtforms import validators, fields
+from wtforms import validators, fields, Form
 from wtforms.validators import DataRequired
 
 import db_control
@@ -21,7 +21,7 @@ users_roles = db.Table('users_roles',
                        db.Column('role_id', db.String(45), db.ForeignKey('roles.id')))
 
 
-@pr.register_model(91)
+@pr.register_model(92)
 class Role(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'roles'
@@ -57,7 +57,7 @@ class Role(db.Model):
 
 
 # Create user model.
-@pr.register_model(92)
+@pr.register_model(93)
 class User(db.Model):
     __bind_key__ = 'default'
     __tablename__ = 'users'
@@ -140,7 +140,7 @@ class User(db.Model):
         return User.query.filter_by(active = 1).all()
 
 
-def init():
+def init(**kwargs):
     db.create_all()
     user_cnt = User.find_by_role('admin')
     if user_cnt is None or user_cnt.cnt == 0:
@@ -213,7 +213,7 @@ class UserView(CVAdminModelView):
                                                      [validators.required(message = '密码是必填字段'),
                                                       validators.equal_to(fieldname = 'password',
                                                                           message = '确认密码须一致')])
-        form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')])
+        form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')], default = True)
         return form
 
     def get_edit_form(self):
@@ -223,7 +223,7 @@ class UserView(CVAdminModelView):
         form.new_password_confirm = fields.PasswordField('密码确认',
                                                          [validators.equal_to(fieldname = 'new_password',
                                                                               message = '确认密码须一致')])
-        form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')])
+        form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')], default = True)
         return form
 
     def on_model_change(self, form, model, is_created):
@@ -234,21 +234,42 @@ class UserView(CVAdminModelView):
             model.password = generate_password_hash(model.password)
 
 
-# todo 改造form中的user子面板
 @pr.register_view()
 class RoleView(CVAdminModelView):
     can_create = True
     can_edit = True
     can_delete = True
     # column_auto_select_related = True
-    from common.user import User
-    # inline_models =[(User, dict(
-    #     column_descriptions=dict(users='用户')
-    # ))]
-    inline_models = [(User, dict(form_columns = ['id', 'username', 'email']))]
+    # from common.user import User
+    # # inline_models =[(User, dict(
+    # #     column_descriptions=dict(users='用户')
+    # # ))]
+    # # inline_models = [(User, dict(form_columns = ['id', 'username', 'email']))]
+    #
+    # from flask_admin.model.form import InlineFormAdmin
+    # class MyInlineModelForm(InlineFormAdmin):
+    #     form_columns = ('id', 'username', 'email', 'active', 'remark')
+    #     # column_labels = dict(id = '用户ID', username = '用户名', password = '密码',
+    #     #                      email = '邮箱地址', roles = '角色', active = '启用',
+    #     #                      create_at = '创建时间', update_at = '更新时间', remark = '备注')
+    #
+    #     def postprocess_form(self, form):
+    #         # form_create_rules = (
+    #         #     rules.FieldSet(('username', 'email','remark'), '基本信息'),
+    #         #     rules.FieldSet(('active',), '权限设置'),
+    #         # )
+    #         # self._form_rules = rules.RuleSet(self, form_create_rules)
+    #         form.username = fields.StringField('用户名', [validators.required(message = '用户名是必填字段')])
+    #         form.email = fields.StringField('邮箱地址')
+    #         form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')], default = True)
+    #         form.remark = fields.StringField('备注')
+    #         return form
+    #
+    # inline_models = (MyInlineModelForm(User),)
+
     column_list = ('id', 'name', 'description', 'users_count', 'create_at', 'update_at')
     column_labels = dict(id = '角色ID', name = '角色名', description = '详述',
-                         create_at = '创建时间', update_at = '更新时间', users_count = '用户数')
+                         create_at = '创建时间', update_at = '更新时间', users_count = '用户数', users = '用户')
 
     def _user_formatter(view, context, model, name):
         cnt = User.find_by_role(model.name)
@@ -266,6 +287,7 @@ class RoleView(CVAdminModelView):
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              users_count = _user_formatter)
     form_columns = ('name', 'description')
+
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '角色', '系统设置')

@@ -13,12 +13,15 @@ from wtforms import validators, fields
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.bot import Bot
+from common.basedata import Basedata
+from common.bot import Bot, bot_registry
 from common.util import get_now, display_datetime, get_botname, get_target_display, get_target_type_choice,\
-    get_target_value
+    get_target_value, get_list_by_botassign, get_list_count_by_botassign
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
+
+br = bot_registry()
 
 # Model----------------------------------------------------------------------------------------------------
 db = db_control.get_db()
@@ -75,14 +78,17 @@ class BotParam(db.Model):
         return True
 
     @staticmethod
+    @br.register_init()
     def init(botid):
-        BotParam.create(botid, 'admin_group', '请更新设置', '可使用高级命令的管理群群号')
-        BotParam.create(botid, 'speak_valid_baseline', '请更新设置', '有效发言最低字数')
-        BotParam.create(botid, 'sign_code', '请更新设置', '签到福利规则代码')
-        BotParam.create(botid, 'point_accept_limit', '请更新设置', '每天接受同一报点人报点上限')
-        BotParam.create(botid, 'point_normal_limit', '请更新设置', '报点人每人可报点上限')
-        BotParam.create(botid, 'point_newbie_limit', '请更新设置', '新人每天可报点上限')
-        BotParam.create(botid, 'point_newbie_days', '请更新设置', '新人报点规则天数')
+        for r in Basedata.find_by_type(1):
+            BotParam.create(botid, r.value, '请更新设置', r.name)
+        return True
+
+    @staticmethod
+    @br.register_destroy()
+    def destroy(botid):
+        for r in BotParam.findall(botid):
+            BotParam.delete(botid, r.name)
         return True
 
 
@@ -131,6 +137,13 @@ class TargetRule(db.Model):
         TargetRule.query.session.commit()
         return True
 
+    @staticmethod
+    @br.register_destroy()
+    def destroy(botid):
+        for r in TargetRule.findall(botid):
+            TargetRule.delete(botid, r.type, r.target)
+        return True
+
 
 db.create_all()
 
@@ -167,25 +180,10 @@ class BotParamView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '机器人参数', '机器人设置')
 
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(BotParamView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(BotParamView, self).get_query()
-            # if self.session.query(self.model) is not None:
-            # # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
-            #     return self.session.query(self.model).filter(self.model.botid == current_user.login)
+        return get_list_by_botassign(BotParam, BotParamView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(BotParamView, self).get_count_query()
-            # if self.session.query(self.model) is not None:
-            # return super(SysParamView, self).get_query().filter(self.model.botid == current_user.login)
-
+        return get_list_count_by_botassign(BotParam, BotParamView, self)
 
 @pr.register_view()
 class TargetRuleView(CVAdminModelView):
@@ -219,20 +217,13 @@ class TargetRuleView(CVAdminModelView):
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '拦截与放行', '机器人设置')
 
+
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(TargetRuleView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(TargetRuleView, self).get_query()
+        return get_list_by_botassign(TargetRule, TargetRuleView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(TargetRuleView, self).get_count_query()
+        return get_list_count_by_botassign(TargetRule, TargetRuleView, self)
+
 
     def get_create_form(self):
         form = self.scaffold_form()

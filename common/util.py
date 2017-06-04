@@ -45,7 +45,7 @@ def output_datetime(dt, hasdate: bool = True, hastime: bool = True) -> str:
 
 def get_botname(botid: str) -> str:
     from common.bot import Bot
-    return Bot.find(botid).name if Bot.find(botid) is not None else ''
+    return Bot.find(botid).name if Bot.find(botid) is not None else '[已删除]'+botid
 
 
 def generate_key(len: int = 32, lowercase: bool = True, uppercase: bool = True, digits: bool = True) -> str:
@@ -135,3 +135,41 @@ def get_omit_display(text: str, length: int = 20) -> str:
         return text[0:omit_length] + '...' if omit_length < len(text) else text
     else:
         return ''
+
+def get_list_by_botassign(model_class, view_class, view_object):
+    from flask_login import current_user
+    if not current_user.is_admin():
+        from common.bot import BotAssign
+        botids = tuple([r.botid for r in BotAssign.find_by_user(current_user.username)])
+        return super(view_class,view_object).get_query().filter(model_class.botid.in_(botids))
+    else:
+        return super(view_class,view_object).get_query()
+
+def get_list_count_by_botassign(model_class, view_class, view_object):
+    from flask_login import current_user
+    from flask_admin.contrib.sqla.view import func
+    if not current_user.is_admin():
+        from common.bot import BotAssign
+        botids = tuple([r.botid for r in BotAssign.find_by_user(current_user.username)])
+        return view_object.session.query(func.count(1)).filter(model_class.botid.in_(botids))
+    else:
+        return super(view_class,view_object).get_count_query()
+
+def get_list_by_scoreaccount(model_class, view_class, view_object):
+    from flask_login import current_user
+    if not current_user.is_admin():
+        from plugins.score import ScoreAccount
+        accounts = tuple([r.name for r in ScoreAccount.find_by_user(current_user.username)])
+        return super(view_class,view_object).get_query().filter(model_class.account.in_(accounts))
+    else:
+        return super(view_class,view_object).get_query()
+
+def get_list_count_by_scoreaccount(model_class, view_class, view_object):
+    from flask_login import current_user
+    from flask_admin.contrib.sqla.view import func
+    if not current_user.is_admin():
+        from plugins.score import ScoreAccount
+        accounts = tuple([r.name for r in ScoreAccount.find_by_user(current_user.username)])
+        return view_object.session.query(func.count(1)).filter(model_class.account.in_(accounts))
+    else:
+        return super(view_class,view_object).get_count_query()

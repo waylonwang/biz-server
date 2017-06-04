@@ -13,7 +13,8 @@ import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
     get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display, output_datetime,\
-    get_transtype_display
+    get_transtype_display, get_list_by_botassign, get_list_count_by_botassign, get_list_by_scoreaccount,\
+    get_list_count_by_scoreaccount
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -266,7 +267,7 @@ class ScoreRecord(db.Model):
 
     @staticmethod
     def find_by_member(member_id):
-        session = sessionmaker(bind=db.get_engine(bind='score'))()
+        session = sessionmaker(bind = db.get_engine(bind = 'score'))()
         cnts = session.execute('SELECT count(1) cnt FROM score_record WHERE member_id = :id', {'id': member_id})
         if cnts is not None:
             return cnts.first()
@@ -337,19 +338,10 @@ class ScoreAccountView(CVAdminModelView):
         CVAdminModelView.__init__(self, model, session, '积分账户设置', '机器人设置')
 
     def get_query(self):
-        from flask_login import current_user
-        if not current_user.is_admin():
-            return super(ScoreAccountView, self).get_query().filter(self.model.botid == current_user.username)
-        else:
-            return super(ScoreAccountView, self).get_query()
+        return get_list_by_botassign(ScoreAccount, ScoreAccountView, self)
 
     def get_count_query(self):
-        from flask_login import current_user
-        from flask_admin.contrib.sqla.view import func
-        if not current_user.is_admin():
-            return self.session.query(func.count('*')).filter(self.model.botid == current_user.username)
-        else:
-            return super(ScoreAccountView, self).get_count_query()
+        return get_list_count_by_botassign(ScoreAccount, ScoreAccountView, self)
 
     def get_create_form(self):
         form = self.scaffold_form()
@@ -384,11 +376,12 @@ class ScoreAccountView(CVAdminModelView):
                                               choices = get_target_type_choice())
         form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
         form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+        form.name = fields.StringField('账户名', render_kw = {'readonly': True})
         form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
         form.is_default = fields.BooleanField('缺省账户')
 
-        def query_factory():
-            return self.model.find_by_id()
+        # def query_factory():
+        #     return self.model.find_by_id()
 
         return form
 
@@ -408,7 +401,7 @@ class ScoreMemberView(CVAdminModelView):
     page_size = 100
     column_filters = ('account', 'member_id', 'member_name', 'income', 'outgo', 'balance')
     column_list = (
-    'account', 'member', 'income', 'outgo', 'balance', 'record_count', 'create_at', 'update_at', 'remark')
+        'account', 'member', 'income', 'outgo', 'balance', 'record_count', 'create_at', 'update_at', 'remark')
     column_searchable_list = ('member_name', 'remark')
     column_labels = dict(account = '账户名',
                          member = '成员',
@@ -443,6 +436,11 @@ class ScoreMemberView(CVAdminModelView):
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '成员积分', '积分管理')
 
+    def get_query(self):
+        return get_list_by_scoreaccount(ScoreMember, ScoreMemberView, self)
+
+    def get_count_query(self):
+        return get_list_count_by_scoreaccount(ScoreMember, ScoreMemberView, self)
 
 @pr.register_view()
 class ScoreRuleView(CVAdminModelView):
@@ -470,6 +468,12 @@ class ScoreRuleView(CVAdminModelView):
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '积分规则设置', '机器人设置')
+
+    def get_query(self):
+        return get_list_by_scoreaccount(ScoreRule, ScoreRuleView, self)
+
+    def get_count_query(self):
+        return get_list_count_by_scoreaccount(ScoreRule, ScoreRuleView, self)
 
     def get_create_form(self):
         form = self.scaffold_form()
@@ -547,6 +551,12 @@ class ScoreRecordView(CVAdminModelView):
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '积分记录', '积分管理')
+
+    def get_query(self):
+        return get_list_by_scoreaccount(ScoreRecord, ScoreRecordView, self)
+
+    def get_count_query(self):
+        return get_list_count_by_scoreaccount(ScoreRecord, ScoreRecordView, self)
 
 
 # Control--------------------------------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import api_control as ac
 import db_control
 from app_view import CVAdminModelView
 from common.util import get_now, get_botname, get_target_value, get_omit_display,\
-    get_target_display, output_datetime, display_datetime
+    get_target_display, output_datetime, display_datetime, get_list_by_botassign, get_list_count_by_botassign
 from plugin import PluginsRegistry
 from plugins.score import ScoreRecord
 from plugins.setting import BotParam
@@ -101,6 +101,11 @@ class SignView(CVAdminModelView):
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '签到记录', '消息管理')
 
+    def get_query(self):
+        return get_list_by_botassign(Sign, SignView, self)
+
+    def get_count_query(self):
+        return get_list_count_by_botassign(Sign, SignView, self)
 
 # Control--------------------------------------------------------------------------------------------------
 @ac.register_api('/sign', endpoint = 'sign')
