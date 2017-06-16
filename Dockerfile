@@ -6,6 +6,8 @@ COPY *.py ./
 COPY common common
 COPY plugins plugins
 COPY templates templates
+COPY static static
+COPY bower_components bower_components
 COPY requirements.txt requirements.txt
 
 RUN pip install --upgrade pip
