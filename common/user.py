@@ -1,9 +1,14 @@
 import flask_login as login
-from flask import url_for
-from flask_admin.form import rules
+from flask import url_for, redirect, request, flash
+from flask_admin import expose
+from flask_admin.form import rules, FormOpts
+from flask_admin.helpers import get_redirect_target
+from flask_admin.model.helpers import get_mdict_item_or_list
+from flask_admin.model.template import TemplateLinkRowAction, EndpointLinkRowAction
+from flask_babelex import gettext
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash
-from wtforms import validators, fields, Form
+from wtforms import validators, fields, HiddenField
 from wtforms.validators import DataRequired
 
 import db_control
@@ -161,7 +166,6 @@ db.create_all()
 
 
 # View-----------------------------------------------------------------------------------------------------
-# todo 重置密码提取到list中定制化action
 @pr.register_view()
 class UserView(CVAdminModelView):
     can_create = True
@@ -177,6 +181,16 @@ class UserView(CVAdminModelView):
                              active = lambda v, c, m, p: get_yesno_display(m.active),
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at))
+
+    # def get_action_url(self):
+    #     self.get_url('.edit_view', id = self.get_pk_value(self.row),
+    #                  url = get_redirect_target() or self.get_url('.index_view'))
+
+    column_extra_row_actions = [
+        # LinkRowAction('fa fa-key','/admin/user/edit/?id={row_id}&amp;url=%2Fadmin%2Fuser%2F'),
+        EndpointLinkRowAction('fa fa-key', 'user.resetpass_view',title='重置密码')
+    ]
+
     form_args = dict(
         roles = dict(validators = [DataRequired()])
     )
@@ -184,14 +198,14 @@ class UserView(CVAdminModelView):
         rules.FieldSet(('username', 'email', 'remark'), '基本信息'),
         # rules.FieldSet(('roles', 'apikey', 'active'), 'Permission'),
         rules.FieldSet(('roles', 'active'), '权限设置'),
-        rules.FieldSet(('password', 'password_confirm'), '账号安全')
+        # rules.FieldSet(('password', 'password_confirm'), '账号安全')
     )
 
     form_edit_rules = (
         rules.FieldSet(('username', 'email', 'remark'), '基本信息'),
         rules.FieldSet(('roles', 'active'), '权限设置'),
         # rules.Header('重置密码'),
-        rules.FieldSet(('new_password', 'new_password_confirm'), '重置密码')
+        # rules.FieldSet(('new_password', 'new_password_confirm'), '重置密码')
         # rules.Field()
     )
 
@@ -208,30 +222,101 @@ class UserView(CVAdminModelView):
     def get_create_form(self):
         form = self.scaffold_form()
         form.username = fields.StringField('用户名', [validators.required(message = '用户名是必填字段')])
-        form.password = fields.PasswordField('密码', [validators.required(message = '密码是必填字段')])
-        form.password_confirm = fields.PasswordField('密码确认',
-                                                     [validators.required(message = '密码是必填字段'),
-                                                      validators.equal_to(fieldname = 'password',
-                                                                          message = '确认密码须一致')])
+        # form.password = fields.PasswordField('密码', [validators.required(message = '密码是必填字段')])
+        # form.password_confirm = fields.PasswordField('密码确认',
+        #                                              [validators.required(message = '密码是必填字段'),
+        #                                               validators.equal_to(fieldname = 'password',
+        #                                                                   message = '确认密码须一致')])
         form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')], default = True)
         return form
 
     def get_edit_form(self):
         form = self.scaffold_form()
         delattr(form, 'password')
-        form.new_password = fields.PasswordField('新密码')
-        form.new_password_confirm = fields.PasswordField('密码确认',
-                                                         [validators.equal_to(fieldname = 'new_password',
-                                                                              message = '确认密码须一致')])
+        # form.new_password = fields.PasswordField('新密码')
+        # form.new_password_confirm = fields.PasswordField('密码确认',
+        #                                                  [validators.equal_to(fieldname = 'new_password',
+        #                                                                       message = '确认密码须一致')])
         form.active = fields.BooleanField('启用状态', [validators.required(message = '启用状态是必填字段')], default = True)
         return form
 
     def on_model_change(self, form, model, is_created):
         if not is_created:
-            if form.new_password.data:
+            if hasattr(form,'new_password'):
                 model.password = generate_password_hash(form.new_password.data)
         else:
             model.password = generate_password_hash(model.password)
+
+    def get_action_form(self):
+        '''
+            定制Action
+        :return: 
+        '''
+        class ResetpassForm(self.form_base_class):
+            form_widget_args = {}
+            form_edit_rules = [
+                rules.Field('new_password'),
+                rules.Field('new_password_confirm')
+            ]
+            _form_edit_rules = rules.RuleSet(self, form_edit_rules)
+            action = HiddenField('')
+            url = HiddenField('')
+            new_password = fields.PasswordField('新密码',[validators.required(message = '密码是必填字段')])
+            new_password_confirm = fields.PasswordField('密码确认',
+                                                        [validators.equal_to(fieldname = 'new_password',
+                                                                             message = '确认密码须一致')])
+
+        return ResetpassForm
+
+    @expose('/resetpass/', methods = ('GET', 'POST'))
+    def resetpass_view(self):
+        """
+            Reset password view
+        """
+        return_url = get_redirect_target() or self.get_url('.index_view')
+
+        if not self.can_edit:
+            return redirect(return_url)
+
+        id = get_mdict_item_or_list(request.args, 'id')
+        if id is None:
+            return redirect(return_url)
+
+        model = self.get_one(id)
+
+        if model is None:
+            flash(gettext('Record does not exist.'), 'error')
+            return redirect(return_url)
+
+        form = self.action_form(obj = model)
+
+        if not hasattr(form, '_validated_ruleset') or not form._validated_ruleset:
+            self._validate_form_instance(ruleset = form._form_edit_rules, form = form)
+
+        if self.validate_form(form):
+            if self.update_model(form, model):
+                flash(gettext('Record was successfully saved.'), 'success')
+                if '_add_another' in request.form:
+                    return redirect(self.get_url('.create_view', url = return_url))
+                elif '_continue_editing' in request.form:
+                    return redirect(request.url)
+                else:
+                    # save button
+                    return redirect(self.get_save_return_url(model, is_created = False))
+
+        if request.method == 'GET' or form.errors:
+            self.on_form_prefill(form, id)
+
+        form_opts = FormOpts(widget_args = form.form_widget_args,
+                             form_rules = form._form_edit_rules)
+
+        template = 'model/resetpass.html'
+
+        return self.render(template,
+                           model = model,
+                           form = form,
+                           form_opts = form_opts,
+                           return_url = return_url)
 
 
 @pr.register_view()
@@ -287,7 +372,6 @@ class RoleView(CVAdminModelView):
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              users_count = _user_formatter)
     form_columns = ('name', 'description')
-
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '角色', '系统设置')

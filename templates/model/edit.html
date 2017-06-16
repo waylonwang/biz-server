@@ -1,0 +1,18 @@
+{% extends 'admin/model/edit.html' %}
+{% import 'admin/lib.html' as lib with context %}
+{% from 'admin/lib.html' import extra with context %} {# backward compatible #}
+
+{% block brand %}
+    <h3 id="brand">{{ _gettext('Edit') }} {{ admin_view.name|capitalize }}</h3>
+    <div class="clearfix"></div>
+    <hr>
+{% endblock %}
+
+{% block body %}
+  {% call lib.form_tag(form) %}
+      {{ lib.render_form_fields(form, form_opts=form_opts) }}
+      <div class="form-buttons">
+        {{ lib.render_form_buttons(return_url) }}
+      </div>
+  {% endcall %}
+{% endblock %}

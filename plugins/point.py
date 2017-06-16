@@ -6,8 +6,8 @@ from sqlalchemy import case, func, and_
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, get_botname, get_target_value, get_omit_display,\
-    get_target_display, output_datetime, generate_key, get_yesno_display, display_datetime, get_list_by_botassign,\
+from common.util import get_now, get_botname, get_target_composevalue, get_target_display, output_datetime, generate_key,\
+    get_yesno_display, display_datetime, get_list_by_botassign,\
     get_list_count_by_botassign
 from plugin import PluginsRegistry
 from plugins.setting import BotParam
@@ -46,7 +46,7 @@ class Point(db.Model):
     @staticmethod
     def create(botid, target_type, target_account, member_id, reporter_id, point: int, message, is_newbie: bool = False,
                **kwargs):
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
 
         Point.check_limit(botid, target, member_id, reporter_id, point, get_now().strftime('%Y-%m-%d'), is_newbie)
 
@@ -125,17 +125,16 @@ class Point(db.Model):
         ).first()
 
     @staticmethod
-    def get_report_status(botid, target_type, target_account, reporter_id,):
-        target = get_target_value(target_type, target_account)
-        result = Point.get_report_count(botid, target, '0', reporter_id, output_datetime(get_now(),True,False))
-        status={}
-        status['botid']=botid
+    def get_report_status(botid, target_type, target_account, reporter_id, ):
+        target = get_target_composevalue(target_type, target_account)
+        result = Point.get_report_count(botid, target, '0', reporter_id, output_datetime(get_now(), True, False))
+        status = {}
+        status['botid'] = botid
         status['target'] = target
         status['reporter_id'] = reporter_id
         status['reporter_confirmed_total'] = result.reporter_confirmed_total
         status['reporter_unconfirm_total'] = result.reporter_unconfirm_total
         return status
-
 
     @staticmethod
     def confirm(id, is_newbie: bool = False):
@@ -166,7 +165,7 @@ class PointConfirm(db.Model):
     @staticmethod
     def create(botid, target_type, target_account, point_id, member_id, confirm_code):
         PointConfirm.clear(botid, target_type, target_account)
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
         record = PointConfirm(botid = botid,
                               target = target,
                               point_id = point_id,
@@ -178,7 +177,7 @@ class PointConfirm(db.Model):
 
     @staticmethod
     def clear(botid, target_type, target_account):
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
         PointConfirm.query.filter(PointConfirm.botid == botid,
                                   PointConfirm.target == target,
                                   PointConfirm.expire_at <= get_now()).delete()
@@ -187,7 +186,7 @@ class PointConfirm(db.Model):
     @staticmethod
     def confirm(botid, target_type, target_account, member_id, confirm_code, is_newbie: bool = False):
         PointConfirm.clear(botid, target_type, target_account)
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
         records = PointConfirm.query.filter(PointConfirm.botid == botid,
                                             PointConfirm.target == target,
                                             PointConfirm.member_id == member_id,
@@ -223,14 +222,14 @@ class PointView(CVAdminModelView):
                          message = '消息')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
-                             reporter = lambda v, c, m, p: m.reporter_id + ' : ' + get_omit_display(m.reporter_name),
-                             member_name = lambda v, c, m, p: get_omit_display(m.member_name),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
+                             reporter = lambda v, c, m, p: m.reporter_id + ' : ' + m.reporter_name,
+                             member_name = lambda v, c, m, p: m.member_name,
                              has_confirmed = lambda v, c, m, p: get_yesno_display(m.has_confirmed),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
-                             message = lambda v, c, m, p: get_omit_display(m.message))
+                             message = lambda v, c, m, p: m.message)
 
     column_default_sort = ('id', True)
 
@@ -242,6 +241,7 @@ class PointView(CVAdminModelView):
 
     def get_count_query(self):
         return get_list_count_by_botassign(Point, PointView, self)
+
 
 # todo point的内容显示为记录详情
 @pr.register_view()
@@ -271,6 +271,8 @@ class PointConfirmView(CVAdminModelView):
 
     def get_count_query(self):
         return get_list_count_by_botassign(PointConfirm, PointConfirmView, self)
+
+
 # Control--------------------------------------------------------------------------------------------------
 @ac.register_api('/pointreport', endpoint = 'pointreport')
 class PointAPI(Resource):
@@ -352,6 +354,7 @@ class PointConfirmAPI(Resource):
         except Exception as e:
             return ac.fault(error = e)
 
+
 @ac.register_api('/pointreportstatus', endpoint = 'pointreportstatus')
 class PointReportStatusAPI(Resource):
     method_decorators = [ac.require_apikey]
@@ -365,9 +368,9 @@ class PointReportStatusAPI(Resource):
             args = parser.parse_args()
 
             record = Point.get_report_status(ac.get_bot(),
-                                          args['target_type'],
-                                          args['target_account'],
-                                          args['reporter_id'])
+                                             args['target_type'],
+                                             args['target_account'],
+                                             args['reporter_id'])
             if record is not None:
                 return ac.success(status = record)
             else:

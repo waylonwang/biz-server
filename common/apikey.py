@@ -1,4 +1,11 @@
 import flask_login as login
+from flask import request
+from flask_admin import expose
+from flask_admin.form import Select2Widget
+from flask_admin.helpers import get_redirect_target
+from flask_admin.model.helpers import get_mdict_item_or_list
+from flask_admin.model.template import EndpointLinkRowAction
+from werkzeug.utils import redirect
 from wtforms import validators, StringField
 
 import db_control
@@ -9,13 +16,9 @@ from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
 
-_api_key = generate_key(32, True, False, True)
-_api_secret = generate_key(12, True, True, True)
-
 db = db_control.get_db()
 
 
-# todo 增加更新action
 @pr.register_model(96)
 class APIKey(db.Model):
     __bind_key__ = 'default'
@@ -33,8 +36,8 @@ class APIKey(db.Model):
         return APIKey.query.filter_by(key = key).first()
 
     @staticmethod
-    def find_by_bot(bitid):
-        return APIKey.query.filter_by(bitid = bitid).first()
+    def find_by_bot(botid):
+        return APIKey.query.filter_by(bitid = botid).first()
 
     @staticmethod
     def destroy(botid):
@@ -47,16 +50,27 @@ class APIKey(db.Model):
         APIKey.query.session.commit()
         return True
 
+    def refresh(self):
+        self.key = generate_key(32, True, False, True)
+        self.secret = generate_key(12, False, True, True)
+        self.query.session.commit()
+
+
 @pr.register_view()
 class APIKeyView(CVAdminModelView):
     can_create = True
-    can_edit = True
+    can_edit = False
     can_delete = True
 
     column_labels = dict(id = 'ID', botid = '机器人', key = 'API Key', secret = 'API Secret',
                          create_at = '创建时间', update_at = '更新时间')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
-                             create_at = lambda v, c, m, p: display_datetime(m.create_at))
+                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at))
+
+    column_extra_row_actions = [
+        EndpointLinkRowAction('fa fa-refresh', 'apikey.refresh_view', title = '更新Key和Secret')
+    ]
 
     form_create_rules = (
         'botid',
@@ -80,8 +94,6 @@ class APIKeyView(CVAdminModelView):
         form = self.scaffold_form()
 
         def query_factory():
-            from flask_login import current_user
-            from common.bot import BotAssign
             return [r.id for r in Bot.findall()]
 
         def get_pk(obj):
@@ -92,7 +104,8 @@ class APIKeyView(CVAdminModelView):
 
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
-                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk,
+                                      widget = Select2Widget())
         return form
 
     def get_edit_form(self):
@@ -113,6 +126,19 @@ class APIKeyView(CVAdminModelView):
             if form.new_key.data:
                 model.key = form.new_key.data
                 model.secret = form.new_secret.data
+
+    @expose('/refresh/', methods = ('GET', 'POST'))
+    def refresh_view(self):
+        """
+            Refresh key and secret
+        """
+        return_url = get_redirect_target() or self.get_url('.index_view')
+
+        id = get_mdict_item_or_list(request.args, 'id')
+        if id is not None:
+            self.get_one(id).refresh()
+
+        return redirect(return_url)
 
 
 db.create_all()

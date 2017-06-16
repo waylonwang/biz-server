@@ -2,3 +2,4 @@
 *.iml
 *.pyc
 data
+bower_components

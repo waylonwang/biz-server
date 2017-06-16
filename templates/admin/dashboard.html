@@ -1,0 +1,72 @@
+<!-- extend base layout -->
+{% extends "admin/master.html" %}
+{% from "admin/macros/areachart.html" import area_chart,count_icon %}
+
+{% block body %}
+    <div class="row">
+    	<div class="col-lg-3 col-md-6">
+    		{{count_icon(26, "New Comments!", "comments", "primary", "#")}}
+    	</div>
+    	<div class="col-lg-3 col-md-6">
+    		{{count_icon(12, "New Tasks!", "tasks", "green", "#")}}
+    	</div>
+    	<div class="col-lg-3 col-md-6">
+    		{{count_icon(124, "New Orders!", "shopping-cart", "yellow", "#")}}
+    	</div>
+    	<div class="col-lg-3 col-md-6">
+    		{{count_icon(13, "Support Tickets!", "support", "red", "#")}}
+    	</div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            {% for t,o in speak_statistics.items() %}
+                {{ area_chart("[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(t.split('#')[0])+ ":" + t.split('#')[1] +"] 每日发言统计图",t+'-chart') }}
+            {% endfor %}
+            {#        {{bar_chart("Bar Chart Example")}}#}
+            {#        {{timeline("Responsive Timeline")}}#}
+        </div>
+        {#    <div class="col-lg-4">#}
+        {#        {{notification("Notifications Panel")}}#}
+        {#        {{donut("Donut Chart Example")}}#}
+        {#        {{chat("Chat")}}#}
+        {#    </div>#}
+    </div>
+
+{% endblock %}
+
+{% block tail %}
+
+    <!-- Timeline CSS -->
+    {#    <link href="/static/css/timeline.css" rel="stylesheet">#}
+
+    <!-- Morris Charts JavaScript -->
+    <script src="/bower_components/raphael/raphael.min.js"></script>
+    <script src="/bower_components/morrisjs/morris.min.js"></script>
+    <script language="javascript">
+        $(function () {
+
+            {% for t,o in speak_statistics.items() %}
+                Morris.Area({
+                    element: '{{ t }}-chart',
+                    data: [
+                        {% for field in o %}
+                            {
+                                date: '{{ field.date }}',
+                                message_count: {{ field.message_count }},
+                                vaild_count: {{ field.vaild_count }}
+                            }{% if not loop.last %},{% endif %}
+                        {% endfor %}
+                    ],
+                    xkey: 'date',
+                    ykeys: ['message_count', 'vaild_count'],
+                    labels: ['消息总数', '有效消息总数'],
+                    pointSize: 2,
+                    hideHover: 'auto',
+                    resize: true,
+                    lineColors: ['#f79646', '#4f81bd']
+                });
+            {% endfor %}
+        });
+    </script>
+{% endblock %}

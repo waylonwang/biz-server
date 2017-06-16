@@ -5,8 +5,8 @@ from flask_restful import Resource, reqparse
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, get_botname, get_target_value, get_omit_display,\
-    get_target_display, output_datetime, display_datetime, get_list_by_botassign, get_list_count_by_botassign
+from common.util import get_now, get_botname, get_target_composevalue, get_target_display, output_datetime, display_datetime,\
+    get_list_by_botassign, get_list_count_by_botassign
 from plugin import PluginsRegistry
 from plugins.score import ScoreRecord
 from plugins.setting import BotParam
@@ -43,7 +43,7 @@ class Sign(db.Model):
             raise Exception(
                 member_id + ':' + ('' if kwargs.get('member_name') is None else kwargs.get('member_name')) + '今天已经签过到了')
 
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
         record = Sign(botid = botid,
                       target = target,
                       member_id = member_id,
@@ -66,7 +66,7 @@ class Sign(db.Model):
 
     @staticmethod
     def find_by_date(botid, target_type, target_account, member_id, date_from, date_to):
-        target = get_target_value(target_type, target_account)
+        target = get_target_composevalue(target_type, target_account)
         return Sign.query.filter(Sign.botid == botid,
                                  Sign.target == target,
                                  Sign.member_id == member_id,
@@ -91,10 +91,10 @@ class SignView(CVAdminModelView):
                          message = '消息')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'),
-                             message = lambda v, c, m, p: get_omit_display(m.message))
+                             message = lambda v, c, m, p: m.message)
 
     column_default_sort = ('id', True)
 
@@ -106,6 +106,7 @@ class SignView(CVAdminModelView):
 
     def get_count_query(self):
         return get_list_count_by_botassign(Sign, SignView, self)
+
 
 # Control--------------------------------------------------------------------------------------------------
 @ac.register_api('/sign', endpoint = 'sign')

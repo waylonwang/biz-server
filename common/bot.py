@@ -1,4 +1,5 @@
 import flask_login as login
+from flask_admin.form import Select2Widget
 from wtforms import validators, fields, StringField
 
 import db_control
@@ -9,6 +10,7 @@ from plugin import PluginsRegistry
 __registry__ = pr = PluginsRegistry()
 
 db = db_control.get_db()
+
 
 @pr.register_model(94)
 class Bot(db.Model):
@@ -31,9 +33,14 @@ class Bot(db.Model):
         return Bot.query.get(botid)
 
     @staticmethod
+    def find_by_name(name):
+        return Bot.query.filter_by(name = name).first()
+
+    @staticmethod
     def destroy(botid):
         from common.apikey import APIKey
         return BotAssign.destroy(botid) and APIKey.destroy(botid)
+
 
 class BotRegistry():
     def __init__(self):
@@ -54,11 +61,14 @@ class BotRegistry():
 
         return decorator
 
+
 bothub = BotRegistry()
+
 
 def bot_registry():
     # global bothub
     return bothub
+
 
 @pr.register_model(95)
 class BotAssign(db.Model):
@@ -117,7 +127,6 @@ class BotAssign(db.Model):
         BotAssign.delete(botid)
         BotAssign.destroy_relation(botid)
         return True
-
 
 
 @pr.register_view()
@@ -201,7 +210,8 @@ class BotAssignView(CVAdminModelView):
 
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
-                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk)
+                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk,
+                                      widget = Select2Widget())
 
         from common.user import User
         def user_query_factory():
@@ -211,7 +221,8 @@ class BotAssignView(CVAdminModelView):
             return obj
 
         form.username = QuerySelectField('用户名', [validators.required(message = '用户名是必填字段')],
-                                         query_factory = user_query_factory, get_pk = user_get_pk)
+                                         query_factory = user_query_factory, get_pk = user_get_pk,
+                                         widget = Select2Widget())
 
         return form
 
@@ -231,5 +242,6 @@ class BotAssignView(CVAdminModelView):
 
     def after_model_delete(self, model):
         BotAssign.destroy(model.botid)
+
 
 db.create_all()

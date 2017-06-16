@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from flask import url_for
-from flask_admin.form import rules
+from flask_admin.form import rules, Select2Widget
 from flask_restful import Resource, reqparse
 from markupsafe import Markup
 from sqlalchemy.orm import sessionmaker
@@ -11,10 +11,11 @@ from wtforms import validators, fields
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
+from common.bot import Bot
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
-    get_acttype_choice, get_target_type_choice, get_target_value, get_target_display, get_omit_display, output_datetime,\
+    get_acttype_choice, get_target_display, output_datetime,\
     get_transtype_display, get_list_by_botassign, get_list_count_by_botassign, get_list_by_scoreaccount,\
-    get_list_count_by_scoreaccount
+    get_list_count_by_scoreaccount, recover_target_value
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -307,8 +308,6 @@ class ScoreAccountView(CVAdminModelView):
                          remark = '备注')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             description = lambda v, c, m, p: get_omit_display(m.description),
-                             remark = lambda v, c, m, p: get_omit_display(m.remark),
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              # type = lambda v, c, m, p: get_acttype_display(m.type),
@@ -317,15 +316,15 @@ class ScoreAccountView(CVAdminModelView):
                     # 'type',
                     'is_default', 'target', 'remark')
     form_create_rules = (
-        rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
-        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+        rules.FieldSet(('botid', 'target'), '目标设置'),
+        rules.FieldSet(('name', 'description', 'remark'), '基本信息'),
         rules.FieldSet((
             # 'type',
             'is_default',), '其他选项')
     )
     form_edit_rules = (
-        rules.FieldSet(('botid', 'name', 'description', 'remark'), '基本信息'),
-        rules.FieldSet(('target_type', 'target_account'), '目标设置'),
+        rules.FieldSet(('botid', 'target'), '目标设置'),
+        rules.FieldSet(('name', 'description', 'remark'), '基本信息'),
         rules.FieldSet((
             # 'type',
             'is_default',), '其他选项')
@@ -345,52 +344,66 @@ class ScoreAccountView(CVAdminModelView):
 
     def get_create_form(self):
         form = self.scaffold_form()
-        delattr(form, 'target')
-        form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice())
-        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
-        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        # delattr(form, 'target')
+        # form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice())
+        # form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice(), widget = Select2Widget())
         form.is_default = fields.BooleanField('缺省账户')
 
-        def query_factory():
+        def bot_query_factory():
             from flask_login import current_user
             from common.bot import BotAssign
             return [r.botid for r in BotAssign.find_by_user(current_user.username)]
 
-        def get_pk(obj):
+        def bot_get_pk(obj):
             return obj
 
-        def get_label(obj):
+        def bot_get_label(obj):
             from common.bot import Bot
             return Bot.find(obj).name
 
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
-                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+                                      query_factory = bot_query_factory, get_label = bot_get_label, get_pk = bot_get_pk,
+                                      widget = Select2Widget())
+
+        def target_query_factory():
+            from flask_login import current_user
+            from plugins.setting import TargetRule
+            return [r.botid + '|' + r.target for r in TargetRule.find_allow_by_user(current_user.username)]
+
+        def target_get_pk(obj):
+            return obj
+
+        def target_get_label(obj):
+            return get_target_display(obj.split('|')[1])
+
+        from wtforms.ext.sqlalchemy.fields import QuerySelectField
+        form.target = QuerySelectField('目标', [validators.required(message = '目标是必填字段')],
+                                       query_factory = target_query_factory, get_label = target_get_label,
+                                       get_pk = target_get_pk, widget = Select2Widget())
         return form
 
     def get_edit_form(self):
         form = self.scaffold_form()
-        # delattr(form, 'target')
-        form.target_type = fields.SelectField('目标类型', [validators.required(message = '目标类型是必填字段')],
-                                              coerce = str,
-                                              choices = get_target_type_choice())
-        form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
-        form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
+        form.botid = fields.StringField('机器人', render_kw = {'readonly': True})
+        form.target = fields.StringField('目标', render_kw = {'readonly': True})
         form.name = fields.StringField('账户名', render_kw = {'readonly': True})
-        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice(), widget = Select2Widget())
         form.is_default = fields.BooleanField('缺省账户')
-
-        # def query_factory():
-        #     return self.model.find_by_id()
 
         return form
 
     def on_model_change(self, form, model, is_created):
-        model.target = get_target_value(form.target_type.data, form.target_account.data)
+        if is_created:
+            model.target = form.target.data.split('|')[1]
+        else:
+            model.botid = Bot.find_by_name(model.botid).id
+            model.target = recover_target_value(model.target)
 
     def on_form_prefill(self, form, id):
-        target = self.model.find_by_id(id).target
-        form.target_account.data = target.replace(target[0:2], '')
+        form.botid.data = Bot.find(form.botid.data).name
+        form.target.data = get_target_display(form.target.data)
 
 
 @pr.register_view()
@@ -427,11 +440,10 @@ class ScoreMemberView(CVAdminModelView):
         else:
             return 0
 
-    column_formatters = dict(member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+    column_formatters = dict(member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
                              record_count = _record_formatter,
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
-                             update_at = lambda v, c, m, p: display_datetime(m.update_at),
-                             remark = lambda v, c, m, p: get_omit_display(m.remark))
+                             update_at = lambda v, c, m, p: display_datetime(m.update_at))
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '成员积分', '积分管理')
@@ -441,6 +453,7 @@ class ScoreMemberView(CVAdminModelView):
 
     def get_count_query(self):
         return get_list_count_by_scoreaccount(ScoreMember, ScoreMemberView, self)
+
 
 @pr.register_view()
 class ScoreRuleView(CVAdminModelView):
@@ -459,9 +472,7 @@ class ScoreRuleView(CVAdminModelView):
                          create_at = '创建时间',
                          update_at = '更新时间',
                          remark = '备注')
-    column_formatters = dict(description = lambda v, c, m, p: get_omit_display(m.description),
-                             remark = lambda v, c, m, p: get_omit_display(m.remark),
-                             create_at = lambda v, c, m, p: display_datetime(m.create_at),
+    column_formatters = dict(create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at),
                              type = lambda v, c, m, p: get_acttype_display(m.type))
     form_columns = ('account', 'code', 'description', 'type', 'amount', 'remark')
@@ -490,10 +501,11 @@ class ScoreRuleView(CVAdminModelView):
 
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.account = QuerySelectField('账户名', [validators.required(message = '账户名是必填字段')],
-                                        query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+                                        query_factory = query_factory, get_label = get_label, get_pk = get_pk,
+                                        widget = Select2Widget())
         form.code = fields.StringField('规则码', [validators.required(message = '规则码是必填字段')])
         form.description = fields.StringField('描述')
-        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice(), widget = Select2Widget())
         form.amount = fields.StringField('数量', [validators.required(message = '数量是必填字段')])
         form.remark = fields.StringField('备注')
         return form
@@ -502,9 +514,9 @@ class ScoreRuleView(CVAdminModelView):
         form = self.scaffold_form()
         form.account = fields.StringField('账户名', render_kw = {'readonly': True})
         form.code = fields.StringField('规则码', render_kw = {'readonly': True})
-        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice(), widget = Select2Widget())
         form.description = fields.StringField('描述')
-        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice())
+        form.type = fields.SelectField('类型', coerce = str, choices = get_acttype_choice(), widget = Select2Widget())
         form.amount = fields.StringField('数量', [validators.required(message = '数量是必填字段')])
         form.remark = fields.StringField('备注')
         return form
@@ -538,14 +550,12 @@ class ScoreRecordView(CVAdminModelView):
                          remark = '备注')
 
     column_formatters = dict(target = lambda v, c, m, p: get_target_display(m.target),
-                             biz_type = lambda v, c, m, p: get_omit_display(
-                                 ScoreRule.get_rule(m.account, m.biz_type).description, 30),
+                             biz_type = lambda v, c, m, p: ScoreRule.get_rule(m.account, m.biz_type).description,
                              trans_type = lambda v, c, m, p: get_transtype_display(m.trans_type, m.amount < 0),
-                             member = lambda v, c, m, p: m.member_id + ' : ' + get_omit_display(m.member_name),
+                             member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
                              amount = lambda v, c, m, p: abs(m.amount),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
-                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
-                             remark = lambda v, c, m, p: get_omit_display(m.remark))
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'))
 
     column_default_sort = ('id', True)
 

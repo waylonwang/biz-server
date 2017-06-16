@@ -1,0 +1,16 @@
+{% extends 'admin/model/edit.html' %}
+
+{% block brand %}
+    <h3 id="brand">重置密码 用户[{{ model.username }}]</h3>
+    <div class="clearfix"></div>
+    <hr>
+{% endblock %}
+
+{% block body %}
+  {% call lib.form_tag(form) %}
+      {{ lib.render_form_fields(form, form_opts=form_opts) }}
+      <div class="form-buttons">
+        {{ lib.render_form_buttons(return_url) }}
+      </div>
+  {% endcall %}
+{% endblock %}

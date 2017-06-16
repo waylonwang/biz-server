@@ -6,7 +6,7 @@
 
 """
 
-from flask_admin.form import rules
+from flask_admin.form import rules, Select2Widget
 from flask_restful import reqparse, Resource
 from wtforms import validators, fields
 
@@ -16,7 +16,7 @@ from app_view import CVAdminModelView
 from common.basedata import Basedata
 from common.bot import Bot, bot_registry
 from common.util import get_now, display_datetime, get_botname, get_target_display, get_target_type_choice,\
-    get_target_value, get_list_by_botassign, get_list_count_by_botassign
+    get_target_composevalue, get_list_by_botassign, get_list_count_by_botassign
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -118,7 +118,7 @@ class TargetRule(db.Model):
 
     @staticmethod
     def findall(botid, type = None):
-        if type:
+        if type is not None:
             return TargetRule.query.filter_by(botid = botid, type = type).all()
         else:
             return TargetRule.query.filter_by(botid = botid).all()
@@ -130,6 +130,13 @@ class TargetRule(db.Model):
     @staticmethod
     def find_by_id(id):
         return TargetRule.query.get(id)
+
+    @staticmethod
+    def find_allow_by_user(username):
+        from common.bot import BotAssign
+        return TargetRule.query.filter(
+            TargetRule.botid.in_((r.botid for r in BotAssign.find_by_user(username))),
+            TargetRule.type == 'allow').all()
 
     @staticmethod
     def delete(botid, type, target):
@@ -185,6 +192,7 @@ class BotParamView(CVAdminModelView):
     def get_count_query(self):
         return get_list_count_by_botassign(BotParam, BotParamView, self)
 
+
 @pr.register_view()
 class TargetRuleView(CVAdminModelView):
     __type_list = {'allow': '允许', 'block': '拒绝'}
@@ -215,8 +223,7 @@ class TargetRuleView(CVAdminModelView):
     )
 
     def __init__(self, model, session):
-        CVAdminModelView.__init__(self, model, session, '拦截与放行', '机器人设置')
-
+        CVAdminModelView.__init__(self, model, session, '目标规则设置', '机器人设置')
 
     def get_query(self):
         return get_list_by_botassign(TargetRule, TargetRuleView, self)
@@ -224,14 +231,14 @@ class TargetRuleView(CVAdminModelView):
     def get_count_query(self):
         return get_list_count_by_botassign(TargetRule, TargetRuleView, self)
 
-
     def get_create_form(self):
         form = self.scaffold_form()
         delattr(form, 'target')
-        form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice())
+        form.target_type = fields.SelectField('目标类型', coerce = str, choices = get_target_type_choice(),
+                                              widget = Select2Widget())
         form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
         form.type = fields.SelectField('类型', [validators.required(message = '类型是必填字段')],
-                                       coerce = str, choices = self.__type_list.items())
+                                       coerce = str, choices = self.__type_list.items(), widget = Select2Widget())
 
         def query_factory():
             from flask_login import current_user
@@ -246,7 +253,8 @@ class TargetRuleView(CVAdminModelView):
 
         from wtforms.ext.sqlalchemy.fields import QuerySelectField
         form.botid = QuerySelectField('机器人', [validators.required(message = '机器人是必填字段')],
-                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk)
+                                      query_factory = query_factory, get_label = get_label, get_pk = get_pk,
+                                      widget = Select2Widget())
         return form
 
     def get_edit_form(self):
@@ -254,11 +262,13 @@ class TargetRuleView(CVAdminModelView):
         # delattr(form, 'target')
         form.target_type = fields.SelectField('目标类型', [validators.required(message = '目标类型是必填字段')],
                                               coerce = str,
-                                              choices = get_target_type_choice())
+                                              choices = get_target_type_choice(),
+                                              widget = Select2Widget())
         form.target_account = fields.StringField('目标账号', [validators.required(message = '目标账号是必填字段')])
         form.type = fields.SelectField('类型', [validators.required(message = '类型是必填字段')],
                                        coerce = str,
-                                       choices = self.__type_list.items())
+                                       choices = self.__type_list.items(),
+                                       widget = Select2Widget())
         form.botid = fields.StringField('机器人ID', render_kw = {'readonly': True})
 
         def query_factory():
@@ -267,7 +277,7 @@ class TargetRuleView(CVAdminModelView):
         return form
 
     def on_model_change(self, form, model, is_created):
-        model.target = get_target_value(form.target_type.data, form.target_account.data)
+        model.target = get_target_composevalue(form.target_type.data, form.target_account.data)
 
     def on_form_prefill(self, form, id):
         # form.botid.label =  Bot.find(form.botid.data).name

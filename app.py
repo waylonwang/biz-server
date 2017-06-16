@@ -10,6 +10,7 @@ db.init(app)
 api.init(app)
 oauth.init(app)
 
+
 if __name__ == '__main__':
     import plugin
     import app_view as view

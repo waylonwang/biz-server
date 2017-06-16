@@ -34,18 +34,19 @@ def output_datetime(dt, hasdate: bool = True, hastime: bool = True) -> str:
     date_pattern = '%Y-%m-%d' if hasdate else ''
     time_pattern = '%H:%M' if hastime else ''
     space = ' ' if hastime else ''
-    if isinstance(dt,datetime):
+    if isinstance(dt, datetime):
         return dt.strftime(date_pattern + space + time_pattern)
-    elif isinstance(dt,date):
+    elif isinstance(dt, date):
         return dt.strftime('%Y-%m-%d')
-    elif isinstance(dt,time):
+    elif isinstance(dt, time):
         return dt.strftime('%H:%M')
     else:
         return str(dt)
 
+
 def get_botname(botid: str) -> str:
     from common.bot import Bot
-    return Bot.find(botid).name if Bot.find(botid) is not None else '[已删除]'+botid
+    return Bot.find(botid).name if Bot.find(botid) is not None else '[已删除]' + botid
 
 
 def generate_key(len: int = 32, lowercase: bool = True, uppercase: bool = True, digits: bool = True) -> str:
@@ -57,8 +58,28 @@ def generate_key(len: int = 32, lowercase: bool = True, uppercase: bool = True, 
     return ''.join([random.choice(chars) for _ in range(len)])
 
 
-def get_target_prefix(name: str) -> str:
+def target_name2prefix(name: str) -> str:
     return {'group': 'g', 'discuzz': 'd', 'private': 'p'}.get(name, name)
+
+
+def target_name2display(name: str) -> str:
+    return {'group': '群', 'discuzz': '组', 'private': '单聊'}.get(name, name)
+
+
+def target_prefix2name(name: str) -> str:
+    return {'g': 'group', 'd': 'discuzz', 'p': 'private'}.get(name, name)
+
+
+def target_prefix2display(name: str) -> str:
+    return {'g': '群', 'd': '组', 'p': '单聊'}.get(name, name)
+
+
+def target_display2name(name: str) -> str:
+    return {'群': 'group', '组': 'discuzz', '单聊': 'private'}.get(name, name)
+
+
+def target_display2prefix(name: str) -> str:
+    return {'群': 'g', '组': 'd', '单聊': 'p'}.get(name, name)
 
 
 def get_target_type_choice() -> list:
@@ -73,12 +94,17 @@ def get_acttype_choice() -> list:
     return [('outgo', '支出'), ('income', '收入'), ('transfer', '转账')]
 
 
-def get_target_value(type: str, account: str) -> str:
-    return get_target_prefix(type) + '#' + account
+def get_target_composevalue(type: str, account: str) -> str:
+    return target_name2prefix(type) + '#' + account.strip()
+
+
+def recover_target_value(target_display: str) -> str:
+    return get_target_composevalue(target_display2name(target_display.split(' : ')[0]),
+                                   target_display.split(':')[1])
 
 
 def get_target_display(target: str) -> str:
-    return target.replace(target[0:2], {'g': '群', 'd': '组', 'p': '单聊'}.get(target[0:1], target) + ' : ')
+    return target.replace(target[0:2], target_prefix2display(target[0:1]) + ' : ')
 
 
 def get_yesno_display(choice: int) -> str:
@@ -86,11 +112,13 @@ def get_yesno_display(choice: int) -> str:
 
 
 def get_acttype_display(type: str) -> str:
-    return {'outgo': '支出', 'income': '收入','transfer':'转账'}.get(type, type)
+    return {'outgo': '支出', 'income': '收入', 'transfer': '转账'}.get(type, type)
 
-def get_transtype_display(type: str,isoutgo:bool) -> str:
-    if type=='transfer' : type+= '_' + 'outgo' if isoutgo else '_' +'income'
+
+def get_transtype_display(type: str, isoutgo: bool) -> str:
+    if type == 'transfer': type += '_' + 'outgo' if isoutgo else '_' + 'income'
     return {'outgo': '支出', 'income': '收入', 'transfer_outgo': '转出', 'transfer_income': '转入'}.get(type, type)
+
 
 def get_omit_display(text: str, length: int = 20) -> str:
     def get_plus_len(text: str, length: int) -> int:
@@ -136,14 +164,16 @@ def get_omit_display(text: str, length: int = 20) -> str:
     else:
         return ''
 
+
 def get_list_by_botassign(model_class, view_class, view_object):
     from flask_login import current_user
     if not current_user.is_admin():
         from common.bot import BotAssign
         botids = tuple([r.botid for r in BotAssign.find_by_user(current_user.username)])
-        return super(view_class,view_object).get_query().filter(model_class.botid.in_(botids))
+        return super(view_class, view_object).get_query().filter(model_class.botid.in_(botids))
     else:
-        return super(view_class,view_object).get_query()
+        return super(view_class, view_object).get_query()
+
 
 def get_list_count_by_botassign(model_class, view_class, view_object):
     from flask_login import current_user
@@ -153,16 +183,18 @@ def get_list_count_by_botassign(model_class, view_class, view_object):
         botids = tuple([r.botid for r in BotAssign.find_by_user(current_user.username)])
         return view_object.session.query(func.count(1)).filter(model_class.botid.in_(botids))
     else:
-        return super(view_class,view_object).get_count_query()
+        return super(view_class, view_object).get_count_query()
+
 
 def get_list_by_scoreaccount(model_class, view_class, view_object):
     from flask_login import current_user
     if not current_user.is_admin():
         from plugins.score import ScoreAccount
         accounts = tuple([r.name for r in ScoreAccount.find_by_user(current_user.username)])
-        return super(view_class,view_object).get_query().filter(model_class.account.in_(accounts))
+        return super(view_class, view_object).get_query().filter(model_class.account.in_(accounts))
     else:
-        return super(view_class,view_object).get_query()
+        return super(view_class, view_object).get_query()
+
 
 def get_list_count_by_scoreaccount(model_class, view_class, view_object):
     from flask_login import current_user
@@ -172,4 +204,4 @@ def get_list_count_by_scoreaccount(model_class, view_class, view_object):
         accounts = tuple([r.name for r in ScoreAccount.find_by_user(current_user.username)])
         return view_object.session.query(func.count(1)).filter(model_class.account.in_(accounts))
     else:
-        return super(view_class,view_object).get_count_query()
+        return super(view_class, view_object).get_count_query()

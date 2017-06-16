@@ -1,0 +1,51 @@
+{% extends 'admin/model/create.html' %}
+{% import 'admin/lib.html' as lib with context %}
+{% from 'admin/lib.html' import extra with context %} {# backward compatible #}
+
+
+{% block brand %}
+    <h3 id="brand">{% if brand %}{{ brand }}{% else %}{{ admin_view.name|capitalize }}{% endif %}</h3>
+    <div class="clearfix"></div>
+    <hr>
+{% endblock %}
+
+{% block body %}
+    {% call lib.form_tag(form) %}
+        {{ lib.render_form_fields(form, form_opts=form_opts) }}
+        <div class="form-buttons">
+            <hr>
+            <div class="control-group">
+                <div class="controls">
+                    <input type="submit" class="btn btn-primary" value="执行" data-toggle="modal" data-target="#myModal" />
+                    {#<a href="{{ return_url }}" class="btn btn-primary">执行</a>#}
+                    <a href="{{ return_url }}" class="btn btn-danger">取消</a>
+                        <!-- Modal -->
+                        <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel"
+                             aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+{#                                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">#}
+{#                                            &times;#}
+{#                                        </button>#}
+                                        <h4 class="modal-title" id="myModalLabel">消息</h4>
+                                    </div>
+                                    <div class="modal-body">
+                                        任务执行中，请稍候！
+                                    </div>
+{#                                    <div class="modal-footer">#}
+{#                                        <button type="button" class="btn btn-default" data-dismiss="modal">关闭#}
+{#                                        </button>#}
+{#                                        <button type="button" class="btn btn-primary">Save changes</button>#}
+{#                                    </div>#}
+                                </div>
+                                <!-- /.modal-content -->
+                            </div>
+                            <!-- /.modal-dialog -->
+                        </div>
+                        <!-- /.modal -->
+                </div>
+            </div>
+        </div>
+    {% endcall %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends 'model/listdo.html' %}
+{% block do %}
+    <a href="{{ url_for('.do_view', url=return_url,caption='统计发言',action='statistics') }}"
+       class="btn btn-primary pull-right">统计</a>
+    <a href="{{ url_for('.do_view', url=return_url,caption='清除发言',action='delete') }}"
+       class="btn btn-default pull-right">清除</a>
+{% endblock %}

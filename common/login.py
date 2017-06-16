@@ -22,6 +22,7 @@ class LoginForm(form.Form):
     username = fields.StringField('用户名', validators = [validators.required(message = '用户名是必填字段')])
     password = fields.PasswordField('密&nbsp;&nbsp;&nbsp;&nbsp;码',
                                     validators = [validators.required(message = '密码是必填字段')])
+    remember = fields.BooleanField()
 
     def validate_username(self, field):
         user = self.get_user()
