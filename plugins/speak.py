@@ -16,7 +16,7 @@ from app_view import CVAdminModelView
 from common.basedata import Basedata
 from common.bot import bot_registry
 from common.util import get_now, display_datetime, get_botname, get_target_composevalue, get_target_display,\
-    get_list_by_botassign, get_list_count_by_botassign, target_prefix2name
+    get_list_by_botassign, get_list_count_by_botassign, target_prefix2name, output_datetime
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -722,9 +722,9 @@ class SpeakRecordAPI(Resource):
                                   target = record.target,
                                   sender_id = record.sender_id,
                                   sender_name = record.sender_name,
-                                  date = record.date,
-                                  time = record.time,
-                                  create_at = record.create_at,
+                                  date = output_datetime(record.date),
+                                  time = output_datetime(record.time),
+                                  create_at = output_datetime(record.create_at),
                                   message = record.message,
                                   washed_text = record.washed_text,
                                   washed_chars = record.washed_chars)
@@ -854,9 +854,9 @@ class SpeakWashDoAPI(Resource):
                                   target = record.target,
                                   sender_id = record.sender_id,
                                   sender_name = record.sender_name,
-                                  date = record.date,
-                                  time = record.time,
-                                  create_at = record.create_at,
+                                  date = output_datetime(record.date),
+                                  time = output_datetime(record.time),
+                                  create_at = output_datetime(record.create_at),
                                   message = record.message,
                                   washed_text = record.washed_text,
                                   washed_chars = record.washed_chars)
