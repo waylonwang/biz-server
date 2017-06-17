@@ -876,21 +876,21 @@ label {
 
 /* <= 568px */
 @media screen and (max-width: 35.5em) {
-    table , .table-bordered {
+    table[class*=cf] , .table-bordered {
         border: 0px;
     }
 
-    table thead {
+    table[class*=cf] thead {
         display: none;
     }
 
-    table tr {
+    table[class*=cf] tr {
         margin-bottom: 20px;
         display: block;
         border-bottom: 0px solid #ddd;
     }
 
-    table td, table td[class*=col-], table th[class*=col-],
+    table[class*=cf] td[class*=col-], table[class*=cf] th[class*=col-],
     .table-bordered>tbody>tr>td, .table-bordered>tbody>tr>th,
     .table-bordered>tfoot>tr>td, .table-bordered>tfoot>tr>th,
     .table-bordered>thead>tr>td, .table-bordered>thead>tr>th {
@@ -903,15 +903,15 @@ label {
         max-width: 30em;
     }
 
-    table td:first-child , table td[class*=col-]:first-child{
+    table[class*=cf] td[class*=col-]:first-child{
         border-top: solid 2px #ccc;
     }
 
-    table td:last-child, table td[class*=col-]:last-child {
+    table[class*=cf] td[class*=col-]:last-child {
         border-bottom: solid 2px #ccc;
     }
 
-    table td:before {
+    table[class*=cf] td[class*=col-]:before {
         content: attr(data-title);
         float: left;
         text-transform: uppercase;

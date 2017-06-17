@@ -709,9 +709,6 @@ class SpeakRecordAPI(Resource):
             parser.add_argument('target_account', required = True, help = '请求中必须包含target_account')
             parser.add_argument('sender_id', required = True, help = '请求中必须包含sender_id')
             parser.add_argument('sender_name')
-            parser.add_argument('date')
-            parser.add_argument('time')
-            parser.add_argument('create_at')
             parser.add_argument('message', required = True, help = '请求中必须包含message')
             args = parser.parse_args()
             record = Speak.create(ac.get_bot(),
