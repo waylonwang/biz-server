@@ -5,6 +5,7 @@ from flask import url_for
 from flask_admin.form import rules, Select2Widget
 from flask_restful import Resource, reqparse
 from markupsafe import Markup
+from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
 from wtforms import validators, fields
 
@@ -15,7 +16,7 @@ from common.bot import Bot
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
     get_acttype_choice, get_target_display, output_datetime,\
     get_transtype_display, get_list_by_botassign, get_list_count_by_botassign, get_list_by_scoreaccount,\
-    get_list_count_by_scoreaccount, recover_target_value, get_CQ_display
+    get_list_count_by_scoreaccount, recover_target_value, get_CQ_display, get_target_composevalue
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -57,6 +58,11 @@ class ScoreAccount(db.Model):
     @staticmethod
     def find_by_id(id):
         return ScoreAccount.query.filter_by(botid = id.split(',')[0], name = id.split(',')[1]).first()
+
+    @staticmethod
+    def find_by_target(botid, target_type, target_account):
+        target = get_target_composevalue(target_type, target_account)
+        return ScoreAccount.query.filter_by(botid = botid, target = target).all()
 
     @staticmethod
     def get_acount(name):
@@ -274,6 +280,29 @@ class ScoreRecord(db.Model):
             return cnts.first()
         return None
 
+    @staticmethod
+    def find_first_by_member_name(member_name):
+        return ScoreRecord.query.filter_by(member_name = member_name).first()
+
+    @staticmethod
+    def get_flow(botid, target_type, target_account, date_from, date_to, member = None):
+        if member is None:
+            member_id = None
+        elif not member.isdigit():
+            record = ScoreRecord.find_first_by_member_name(member)
+            member_id = record.member_id
+        else:
+            member_id = member
+
+        return ScoreRecord.query.session.query(
+            func.sum(func.abs(ScoreRecord.amount)).label('total')
+        ).filter(
+            ScoreRecord.account.in_((r.name for r in ScoreAccount.find_by_target(botid, target_type, target_account))),
+            ScoreRecord.date >= date_from,
+            ScoreRecord.date <= date_to,
+            ScoreRecord.member_id == member_id if member_id is not None else 1 == 1
+        ).first()
+
 
 db.create_all()
 
@@ -439,12 +468,13 @@ class ScoreMemberView(CVAdminModelView):
             )
         else:
             return 0
-        chr(126980)
 
     column_formatters = dict(member = lambda v, c, m, p: get_CQ_display(m.member_id + ' : ' + m.member_name),
                              record_count = _record_formatter,
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at))
+
+    column_default_sort = ('update_at', True)
 
     def __init__(self, model, session):
         CVAdminModelView.__init__(self, model, session, '成员积分', '积分管理')

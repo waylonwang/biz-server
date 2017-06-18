@@ -223,7 +223,7 @@ def get_CQ_display(text: str):
 
     def display_sign(text: str):
         return re.sub(r'\[CQ:sign[^\]]*\]',
-                      '<span class="CQ_icon" style="background:darkslateblue;"><i class="fa fa-map-marker fa-flag-checkered"></i></span>',
+                      '<span class="CQ_icon" style="background:darkslateblue;"><i class="fa fa-flag-checkered"></i></span>',
                       text)
 
     def display_bface(text: str):

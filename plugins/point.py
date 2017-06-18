@@ -149,6 +149,31 @@ class Point(db.Model):
 
         return point
 
+    @staticmethod
+    def find_first_by_member_name(member_name):
+        return Point.query.filter_by(member_name = member_name).first()
+
+    @staticmethod
+    def get_count(botid, target_type, target_account, date_from, date_to, member = None):
+        target = get_target_composevalue(target_type, target_account)
+
+        if member is None:
+            member_id = None
+        elif not member.isdigit():
+            record = Point.find_first_by_member_name(member)
+            member_id = record.member_id
+        else:
+            member_id = member
+
+        return Point.query.session.query(
+            func.sum(1).label('cnt')
+        ).filter(
+            Point.botid == botid,
+            Point.target == target,
+            Point.date >= date_from,
+            Point.date <= date_to,
+            Point.member_id == member_id if member_id is not None else 1 == 1
+        ).first()
 
 @pr.register_model(21)
 class PointConfirm(db.Model):

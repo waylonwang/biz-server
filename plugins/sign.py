@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from flask_restful import Resource, reqparse
+from sqlalchemy import func
 
 import api_control as ac
 import db_control
@@ -74,6 +75,31 @@ class Sign(db.Model):
                                  Sign.date >= date_from,
                                  Sign.date <= date_to).all()
 
+    @staticmethod
+    def find_first_by_member_name(member_name):
+        return Sign.query.filter_by(member_name = member_name).first()
+
+    @staticmethod
+    def get_count(botid, target_type, target_account, date_from, date_to, member = None):
+        target = get_target_composevalue(target_type, target_account)
+
+        if member is None:
+            member_id = None
+        elif not member.isdigit():
+            record = Sign.find_first_by_member_name(member)
+            member_id = record.member_id
+        else:
+            member_id = member
+
+        return Sign.query.session.query(
+            func.sum(1).label('cnt')
+        ).filter(
+            Sign.botid == botid,
+            Sign.target == target,
+            Sign.date >= date_from,
+            Sign.date <= date_to,
+            Sign.member_id == member_id if member_id is not None else 1 == 1
+        ).first()
 
 # View-----------------------------------------------------------------------------------------------------
 @pr.register_view()

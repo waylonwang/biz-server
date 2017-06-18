@@ -16,7 +16,6 @@ from env import get_db_dir
 
 # import stub as stub
 
-
 admin = None
 
 
@@ -81,21 +80,62 @@ class CVAdminIndexView(AdminIndexView):
 
     @expose('/dashboard/', methods = ('GET', 'POST'))
     def dashboard_view(self):
-        from plugins.speak import SpeakCount
+        from plugins.speak import Speak, SpeakCount
+        from plugins.sign import Sign
+        from plugins.point import Point
+        from plugins.score import ScoreRecord
         from plugins.setting import TargetRule
         speak_statistics = {}
+        today = output_datetime(get_now(), True, False)
+        speak_today_count = 0
+        sign_today_count = 0
+        point_today_count = 0
+        score_today_total = 0
         targets = TargetRule.find_allow_by_user(login.current_user.username)
-        for target in targets:
-            data = SpeakCount.statistics(target.botid,
-                                           target_prefix2name(target.target.split('#')[0]),
-                                           target.target.split('#')[1],
-                                           output_datetime(get_now() - datetime.timedelta(days = 60), True, False),
-                                           output_datetime(get_now(), True, False)).fetchall()
-            if len(data)>0:
-                speak_statistics[target.target]=data
 
+        for target in targets:
+            statistics_data = SpeakCount.statistics(target.botid,
+                                                    target_prefix2name(target.target.split('#')[0]),
+                                                    target.target.split('#')[1],
+                                                    output_datetime(get_now() - datetime.timedelta(days = 60), True,
+                                                                    False),
+                                                    today).fetchall()
+            if len(statistics_data) > 0:
+                speak_statistics[target.target] = statistics_data
+
+            speak_today = Speak.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                          target.target.split('#')[1],today,today)
+            if speak_today.cnt_full is not None:
+                speak_today_count += speak_today.cnt_full
+
+            sign_today = Sign.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                        target.target.split('#')[1],today,today)
+            if sign_today.cnt is not None:
+                sign_today_count += sign_today.cnt
+
+            point_today = Point.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                          target.target.split('#')[1],today,today)
+            if point_today.cnt is not None:
+                point_today_count += point_today.cnt
+
+            score_today = ScoreRecord.get_flow(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                               target.target.split('#')[1],today,today)
+            if score_today.total is not None:
+                score_today_total += score_today.total
+
+        self._template_args['today'] = today
+        self._template_args['speak_today_count'] = speak_today_count
+        self._template_args['sign_today_count'] = sign_today_count
+        self._template_args['point_today_count'] = point_today_count
+        self._template_args['score_today_total'] = score_today_total
         self._template_args['speak_statistics'] = speak_statistics
-        return self.render('admin/dashboard.html', speak_statistics = speak_statistics)
+        return self.render('admin/dashboard.html',
+                           today = today,
+                           speak_today_count = speak_today_count,
+                           sign_today_count = sign_today_count,
+                           point_today_count = point_today_count,
+                           score_today_total = score_today_total,
+                           speak_statistics = speak_statistics)
 
     @expose('/login/', methods = ('GET', 'POST'))
     def login_view(self):
@@ -105,8 +145,8 @@ class CVAdminIndexView(AdminIndexView):
         try:
             if helpers.validate_form_on_submit(form):
                 user = form.get_user()
-                remember=form.remember.data
-                login.login_user(user,remember)
+                remember = form.remember.data
+                login.login_user(user, remember)
 
             if login.current_user.is_authenticated:
                 identity_changed.send(current_app._get_current_object(),

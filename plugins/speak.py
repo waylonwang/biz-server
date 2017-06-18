@@ -177,6 +177,33 @@ class Speak(db.Model):
             Speak.sender_id == sender_id if sender_id is not None else 1 == 1
         ).first()
 
+    @staticmethod
+    def get_count(botid, target_type, target_account, date_from, date_to, sender = None):
+        target = get_target_composevalue(target_type, target_account)
+        baseline = 0
+        from plugins.setting import BotParam
+        param = BotParam.find(botid, 'speak_valid_baseline')
+        if param is not None:
+            baseline = int(param.value)
+
+        if sender is None:
+            sender_id = None
+        elif not sender.isdigit():
+            record = Speak.find_first_by_sender_name(sender)
+            sender_id = record.sender_id
+        else:
+            sender_id = sender
+
+        return Speak.query.session.query(
+            func.sum(1).label('cnt_full'),
+            func.sum(case([(Speak.washed_chars >= baseline, 1)], else_ = 0)).label("cnt_valid")
+        ).filter(
+            Speak.botid == botid,
+            Speak.target == target,
+            Speak.date >= date_from,
+            Speak.date <= date_to,
+            Speak.sender_id == sender_id if sender_id is not None else 1 == 1
+        ).first()
 
 @pr.register_model(73)
 class SpeakWash(db.Model):
