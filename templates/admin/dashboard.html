@@ -26,11 +26,32 @@
             {#        {{bar_chart("Bar Chart Example")}}#}
             {#        {{timeline("Responsive Timeline")}}#}
         </div>
-        {#    <div class="col-lg-4">#}
-        {#        {{notification("Notifications Panel")}}#}
-        {#        {{donut("Donut Chart Example")}}#}
-        {#        {{chat("Chat")}}#}
-        {#    </div>#}
+        <div class="col-lg-4">
+            {% for t,o in speak_tops.items() %}
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <i class="fa fa-trophy fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(t.split('#')[0])+ ":" + t.split('#')[1] +"] 今日发言排行榜" }}
+                    </div>
+                    <ul class="list-group top-list">
+                        {% for r in o %}
+                            <li>
+                                <a href="#" class="list-group-item">
+                                    <div class="top-number">{{ loop.index }}</div>
+                                    <div class="top-id">{{ r.get('id') }}</div>
+                                    <div class="top-name">{{ r.get('name') }}</div>
+                                    <span class="pull-right text-muted small"><em>{{ r.get('count') }}</em></span>
+                                </a>
+                            </li>
+                        {% endfor %}
+                        <!-- /.list-group -->
+                    </ul>
+                    <!-- /.panel-body -->
+                </div>
+            {% endfor %}
+
+            {#            {{ donut("Donut Chart Example") }}#}
+            {#            {{ chat("Chat") }}#}
+        </div>
     </div>
 
 {% endblock %}
@@ -50,11 +71,11 @@
                 Morris.Area({
                     element: '{{ t }}-chart',
                     data: [
-                        {% for field in o %}
+                        {% for record in o %}
                             {
-                                date: '{{ field.date }}',
-                                message_count: {{ field.message_count }},
-                                vaild_count: {{ field.vaild_count }}
+                                date: '{{ record.date }}',
+                                message_count: {{ record.message_count }},
+                                vaild_count: {{ record.vaild_count }}
                             }{% if not loop.last %},{% endif %}
                         {% endfor %}
                     ],

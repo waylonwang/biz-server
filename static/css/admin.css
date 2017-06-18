@@ -816,6 +816,38 @@ label {
     display: inline-block;
 }
 
+.top-list{
+    list-style: none;
+}
+
+.top-list .top-number{
+    background: #f0ad4e;
+    color: white;
+    text-align: center;
+    width: 20px;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+ul[class*=top-list] > li:first-child .top-number{
+    background: #d9534f;
+}
+
+.top-id {
+    display:inline-block;
+    width: 80px;
+}
+
+.top-name {
+    display:inline-block;
+    max-width: 180px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    line-height: 15px;
+    margin-left: 5px;
+}
+
 /* 大屏手机屏幕 >= 990px  */
 @media screen and (min-width: 990px) {
     .col-md-offset-4-1 {

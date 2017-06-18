@@ -11,7 +11,7 @@ from flask_principal import identity_changed, Identity, current_app, AnonymousId
 from werkzeug.security import generate_password_hash
 
 import db_control
-from common.util import target_prefix2name, get_now, output_datetime
+from common.util import target_prefix2name, get_now, output_datetime, get_CQ_display
 from env import get_db_dir
 
 # import stub as stub
@@ -85,15 +85,37 @@ class CVAdminIndexView(AdminIndexView):
         from plugins.point import Point
         from plugins.score import ScoreRecord
         from plugins.setting import TargetRule
-        speak_statistics = {}
+
         today = output_datetime(get_now(), True, False)
+        speak_statistics = {}
+        speak_tops = {}
         speak_today_count = 0
         sign_today_count = 0
         point_today_total = 0
         score_today_total = 0
-        targets = TargetRule.find_allow_by_user(login.current_user.username)
 
-        for target in targets:
+        def get_score_today_total(score_today_total, target, today):
+            score_today = ScoreRecord.get_flow(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                               target.target.split('#')[1], today, today)
+            if score_today.total is not None:
+                score_today_total += score_today.total
+            return score_today_total
+
+        def get_point_today_total(point_today_total, target, today):
+            point_today = Point.get_total(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                          target.target.split('#')[1], today, today)
+            if point_today.total_success is not None:
+                point_today_total += point_today.total_success
+            return point_today_total
+
+        def get_sign_today_count(sign_today_count, target, today):
+            sign_today = Sign.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
+                                        target.target.split('#')[1], today, today)
+            if sign_today.cnt is not None:
+                sign_today_count += sign_today.cnt
+            return sign_today_count
+
+        def get_speak_statistics(speak_statistics, target, today):
             statistics_data = SpeakCount.statistics(target.botid,
                                                     target_prefix2name(target.target.split('#')[0]),
                                                     target.target.split('#')[1],
@@ -103,39 +125,40 @@ class CVAdminIndexView(AdminIndexView):
             if len(statistics_data) > 0:
                 speak_statistics[target.target] = statistics_data
 
+        def get_speak_tops(speak_tops, target, today):
+            records = Speak.get_top(target.botid,
+                                     target_prefix2name(target.target.split('#')[0]),
+                                     target.target.split('#')[1],
+                                     today,
+                                     today)
+            top_data=[{ 'name' : get_CQ_display(r.sender_name),'id': r.sender_id , 'count' :r.cnt} for r in records ]
+            if len(top_data) > 0:
+                speak_tops[target.target] = top_data
+
+        def get_speak_today_count(speak_today_count, target, today):
             speak_today = Speak.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                          target.target.split('#')[1],today,today)
+                                          target.target.split('#')[1], today, today)
             if speak_today.cnt_full is not None:
                 speak_today_count += speak_today.cnt_full
+            return speak_today_count
 
-            sign_today = Sign.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                        target.target.split('#')[1],today,today)
-            if sign_today.cnt is not None:
-                sign_today_count += sign_today.cnt
+        targets = TargetRule.find_allow_by_user(login.current_user.username)
+        for target in targets:
+            speak_today_count = get_speak_today_count(speak_today_count, target, today)
+            sign_today_count = get_sign_today_count(sign_today_count, target, today)
+            point_today_total = get_point_today_total(point_today_total, target, today)
+            score_today_total = get_score_today_total(score_today_total, target, today)
+            get_speak_statistics(speak_statistics, target, today)
+            get_speak_tops(speak_tops, target, today)
 
-            point_today = Point.get_total(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                          target.target.split('#')[1],today,today)
-            if point_today.total_success is not None:
-                point_today_total += point_today.total_success
-
-            score_today = ScoreRecord.get_flow(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                               target.target.split('#')[1],today,today)
-            if score_today.total is not None:
-                score_today_total += score_today.total
-
-        self._template_args['today'] = today
-        self._template_args['speak_today_count'] = speak_today_count
-        self._template_args['sign_today_count'] = sign_today_count
-        self._template_args['point_today_total'] = point_today_total
-        self._template_args['score_today_total'] = score_today_total
-        self._template_args['speak_statistics'] = speak_statistics
         return self.render('admin/dashboard.html',
                            today = today,
                            speak_today_count = speak_today_count,
                            sign_today_count = sign_today_count,
                            point_today_total = point_today_total,
                            score_today_total = score_today_total,
-                           speak_statistics = speak_statistics)
+                           speak_statistics = speak_statistics,
+                           speak_tops = speak_tops)
 
     @expose('/login/', methods = ('GET', 'POST'))
     def login_view(self):

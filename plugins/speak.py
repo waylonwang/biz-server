@@ -136,7 +136,7 @@ class Speak(db.Model):
                 baseline = param.value
 
         return Speak.query.session.query(
-            Speak.sender_id, func.last(Speak.sender_name), func.count(1).label('cnt')
+            Speak.sender_id, Speak.sender_name, func.count(1).label('cnt')
         ).filter(
             Speak.botid == botid,
             Speak.target == target,
