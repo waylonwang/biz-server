@@ -154,7 +154,7 @@ class Point(db.Model):
         return Point.query.filter_by(member_name = member_name).first()
 
     @staticmethod
-    def get_count(botid, target_type, target_account, date_from, date_to, member = None):
+    def get_total(botid, target_type, target_account, date_from, date_to, member = None):
         target = get_target_composevalue(target_type, target_account)
 
         if member is None:
@@ -166,7 +166,8 @@ class Point(db.Model):
             member_id = member
 
         return Point.query.session.query(
-            func.sum(1).label('cnt')
+            func.sum(Point.point).label('total_full'),
+            func.sum(case([(Point.has_confirmed == 1 , Point.point)], else_ = 0)).label('total_success'),
         ).filter(
             Point.botid == botid,
             Point.target == target,

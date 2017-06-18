@@ -11,7 +11,7 @@
             {{ count_icon(sign_today_count, "今日签到数!", "flag-checkered", "green", url_for('sign.index_view', flt1_21 = today)) }}
         </div>
         <div class="col-lg-3 col-md-6">
-            {{ count_icon(point_today_count, "今日报点数!", "bullhorn", "yellow", url_for('point.index_view', flt1_42 = today)) }}
+            {{ count_icon(point_today_total, "今日报点成功点数!", "bullhorn", "yellow", url_for('point.index_view', flt1_42 = today)) }}
         </div>
         <div class="col-lg-3 col-md-6">
             {{ count_icon(score_today_total, "今日积分流量!", "money", "red", url_for('scorerecord.index_view', flt1_35 = today)) }}

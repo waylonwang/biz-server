@@ -89,7 +89,7 @@ class CVAdminIndexView(AdminIndexView):
         today = output_datetime(get_now(), True, False)
         speak_today_count = 0
         sign_today_count = 0
-        point_today_count = 0
+        point_today_total = 0
         score_today_total = 0
         targets = TargetRule.find_allow_by_user(login.current_user.username)
 
@@ -113,10 +113,10 @@ class CVAdminIndexView(AdminIndexView):
             if sign_today.cnt is not None:
                 sign_today_count += sign_today.cnt
 
-            point_today = Point.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
+            point_today = Point.get_total(target.botid, target_prefix2name(target.target.split('#')[0]),
                                           target.target.split('#')[1],today,today)
-            if point_today.cnt is not None:
-                point_today_count += point_today.cnt
+            if point_today.total_success is not None:
+                point_today_total += point_today.total_success
 
             score_today = ScoreRecord.get_flow(target.botid, target_prefix2name(target.target.split('#')[0]),
                                                target.target.split('#')[1],today,today)
@@ -126,14 +126,14 @@ class CVAdminIndexView(AdminIndexView):
         self._template_args['today'] = today
         self._template_args['speak_today_count'] = speak_today_count
         self._template_args['sign_today_count'] = sign_today_count
-        self._template_args['point_today_count'] = point_today_count
+        self._template_args['point_today_total'] = point_today_total
         self._template_args['score_today_total'] = score_today_total
         self._template_args['speak_statistics'] = speak_statistics
         return self.render('admin/dashboard.html',
                            today = today,
                            speak_today_count = speak_today_count,
                            sign_today_count = sign_today_count,
-                           point_today_count = point_today_count,
+                           point_today_total = point_today_total,
                            score_today_total = score_today_total,
                            speak_statistics = speak_statistics)
 
