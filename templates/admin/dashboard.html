@@ -35,12 +35,12 @@
                     <ul class="list-group top-list">
                         {% for r in o %}
                             <li>
-                                <a href="#" class="list-group-item">
+                                <div class="list-group-item">
                                     <div class="top-number">{{ loop.index }}</div>
                                     <div class="top-id">{{ r.get('id') }}</div>
                                     <div class="top-name">{{ r.get('name') }}</div>
                                     <span class="pull-right text-muted small"><em>{{ r.get('count') }}</em></span>
-                                </a>
+                                </div>
                             </li>
                         {% endfor %}
                         <!-- /.list-group -->
