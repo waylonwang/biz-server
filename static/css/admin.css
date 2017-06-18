@@ -840,7 +840,7 @@ ul[class*=top-list] > li:first-child .top-number{
 
 .top-name {
     display:inline-block;
-    max-width: 180px;
+    max-width: 160px;
     text-overflow: ellipsis;
     white-space: nowrap;
     overflow: hidden;
