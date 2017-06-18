@@ -214,10 +214,16 @@ class UserView(CVAdminModelView):
 
     def is_accessible(self):
         from common.login import admin_permission
-        if admin_permission.can():
-            return login.current_user.is_authenticated
+        if request.endpoint == 'user.resetpass_view':
+            if (login.current_user.id == int(request.values.get('id'))) or admin_permission.can():
+                return login.current_user.is_authenticated
+            else:
+                return False
         else:
-            return False
+            if admin_permission.can():
+                return login.current_user.is_authenticated
+            else:
+                return False
 
     def get_create_form(self):
         form = self.scaffold_form()

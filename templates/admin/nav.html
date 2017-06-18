@@ -89,10 +89,12 @@
                 <i class="fa fa-user fa-fw"></i>  {{ current_user.username }} <i class="fa fa-caret-down"></i>
             </a>
             <ul class="dropdown-menu dropdown-user">
-                <li><a href="#"><i class="fa fa-user fa-fw"></i> 用户信息</a>
-                </li>
+{#                <li><a href="#"><i class="fa fa-user fa-fw"></i> 用户信息</a>#}
+{#                </li>#}
 {#                <li><a href="#"><i class="fa fa-gear fa-fw"></i> Settings</a>#}
 {#                </li>#}
+                <li><a href="{{ url_for('user.resetpass_view',id=current_user.id,return_url=url_for('admin.index')) }}"><i class="fa fa-user fa-fw"></i> 更改密码</a>
+                </li>
                 <li class="divider"></li>
                 <li><a href="{{ url_for('admin.logout_view') }}"><i class="fa fa-sign-out fa-fw"></i> 登出</a>
                 </li>

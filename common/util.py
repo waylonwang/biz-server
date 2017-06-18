@@ -4,6 +4,7 @@ import string
 from datetime import datetime, date, time
 
 import pytz
+from markupsafe import Markup
 
 
 def get_tz() -> pytz:
@@ -205,3 +206,74 @@ def get_list_count_by_scoreaccount(model_class, view_class, view_object):
         return view_object.session.query(func.count(1)).filter(model_class.account.in_(accounts))
     else:
         return super(view_class, view_object).get_count_query()
+
+
+def get_CQ_display(text: str):
+    def display_emoji(text: str):
+        def replace_text(matched):
+            if matched.group("id") != None:
+                return chr(int(matched.group("id")))
+            else:
+                return ''
+
+        return re.sub(r'\[CQ:emoji,id=(?P<id>[^\]]*)\]', replace_text, text)
+
+    def display_at(text: str):
+        return re.sub(r'\[CQ:at,qq=(?P<id>[^\]]*)\]', '<div class="CQ_at" >@' + r'\g<id>' + '</div>', text)
+
+    def display_sign(text: str):
+        return re.sub(r'\[CQ:sign[^\]]*\]',
+                      '<span class="CQ_icon" style="background:darkslateblue;"><i class="fa fa-map-marker fa-flag-checkered"></i></span>',
+                      text)
+
+    def display_bface(text: str):
+        return re.sub(r'\[CQ:bface[^\]]*\](?:\[[^\]]*\])*',
+                      '<span class="CQ_icon" style="background:gold;"><i class="fa fa-smile-o"></i></span>', text)
+
+    def display_face(text: str):
+        def replace_text(matched):
+            if matched.group("id") != None:
+                id = matched.group("id")
+                left = int(id) % 15 * 20
+                top = int(id) // 15 * 20
+                return '<div class="CQ_face" style="background: url(\'/static/images/qqface20.png\') -' + str(
+                    left) + 'px -' + str(top) + 'px no-repeat;"></div>'
+            else:
+                return '<span class="CQ_icon"><i class="fa fa-smile-o"></i></span>'
+
+        return re.sub(r'\[CQ:face,id=(?P<id>[^\]]*)\]', replace_text, text)
+
+    def display_sface(text: str):
+        return re.sub(r'\[CQ:sface,id=[^\]]*\]',
+                      '<span class="CQ_icon" style="background:salmon;"><i class="fa fa-smile-o"></i></span>', text)
+
+    def display_share(text: str):
+        return re.sub(r'\[CQ:share,[^\]]*\]]',
+                      '<span class="CQ_icon" style="background:dodgerblue;"><i class="fa fa-link"></i></span>', text)
+
+    def display_image(text: str):
+        return re.sub(r'\[CQ:image,file=[^\]]*\]',
+                      '<span class="CQ_icon"style="background:lightseagreen;"><i class="glyphicon glyphicon-picture"></i></span>',
+                      text)
+
+    def display_record(text: str):
+        return re.sub(r'\[CQ:record,file=[^\]]*\]',
+                      '<span class="CQ_icon" style="background:mediumvioletred;"><i class="glyphicon glyphicon-volume-up"></i></span>',
+                      text)
+
+    def display_music(text: str):
+        return re.sub(r'\[CQ:music,type=[^\]]*\]',
+                      '<span class="CQ_icon" style="background:brown;"><i class="glyphicon glyphicon-music"></i></span>',
+                      text)
+
+    text = display_emoji(text)
+    text = display_at(text)
+    text = display_sign(text)
+    text = display_bface(text)
+    text = display_sface(text)
+    text = display_face(text)
+    text = display_share(text)
+    text = display_image(text)
+    text = display_record(text)
+    text = display_music(text)
+    return Markup(text)

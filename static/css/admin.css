@@ -461,7 +461,7 @@ table.dataTable thead .sorting:after {
 
 .login_bk {
     min-height: 550px;
-    background: #30597c url(/static/bg.jpg) center center no-repeat;
+    background: #30597c url(/static/images/bg.jpg) center center no-repeat;
     background-size: cover;
     /*mirgin-top: 100px;*/
 }
@@ -788,6 +788,34 @@ label {
     font-weight: 400;
 }
 
+.CQ_at {
+    background: yellow;
+    color: peru;
+    border: solid 1px white;
+    padding: 1px 5px 1px;
+    display: inline-block;
+    max-width: 80px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    vertical-align: top;
+    line-height: 15px;
+}
+
+.CQ_face {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+}
+
+.CQ_icon {
+    background: darkgray;
+    color: white;
+    border: solid 1px white;
+    padding: 2px 5px 2px;
+    display: inline-block;
+}
+
 @media screen and (min-width: 990px) {
     .col-md-offset-4-1 {
         margin-top: 20px;
@@ -876,7 +904,7 @@ label {
 
 /* <= 568px */
 @media screen and (max-width: 35.5em) {
-    table[class*=cf] , .table-bordered {
+    table[class*=cf], .table-bordered {
         border: 0px;
     }
 
@@ -891,9 +919,9 @@ label {
     }
 
     table[class*=cf] td[class*=col-], table[class*=cf] th[class*=col-],
-    .table-bordered>tbody>tr>td, .table-bordered>tbody>tr>th,
-    .table-bordered>tfoot>tr>td, .table-bordered>tfoot>tr>th,
-    .table-bordered>thead>tr>td, .table-bordered>thead>tr>th {
+    .table-bordered > tbody > tr > td, .table-bordered > tbody > tr > th,
+    .table-bordered > tfoot > tr > td, .table-bordered > tfoot > tr > th,
+    .table-bordered > thead > tr > td, .table-bordered > thead > tr > th {
         display: block;
         text-align: right;
         font-size: 13px;
@@ -901,9 +929,12 @@ label {
         border-bottom: 1px dotted #ccc;
         min-height: 36px;
         max-width: 30em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
     }
 
-    table[class*=cf] td[class*=col-]:first-child{
+    table[class*=cf] td[class*=col-]:first-child {
         border-top: solid 2px #ccc;
     }
 

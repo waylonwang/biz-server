@@ -16,7 +16,7 @@ from app_view import CVAdminModelView
 from common.basedata import Basedata
 from common.bot import bot_registry
 from common.util import get_now, display_datetime, get_botname, get_target_composevalue, get_target_display,\
-    get_list_by_botassign, get_list_count_by_botassign, target_prefix2name, output_datetime
+    get_list_by_botassign, get_list_count_by_botassign, target_prefix2name, output_datetime, get_CQ_display
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -332,7 +332,8 @@ class SpeakView(CVAdminModelView):
     #                          time=lambda v, c, m, p: datetime.fromtimestamp(m.update_at).strftime('%Y-%m-%d'))
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             sender = lambda v, c, m, p: m.sender_id + ' : ' + m.sender_name,
+                             sender = lambda v, c, m, p: get_CQ_display(m.sender_id + ' : ' + m.sender_name),
+                             message = lambda v, c, m, p: get_CQ_display(m.message),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'))
 
@@ -577,7 +578,7 @@ class SpeakCountView(CVAdminModelView):
     column_formatters = dict(
         botid = lambda v, c, m, p: get_botname(m.botid),
         target = lambda v, c, m, p: get_target_display(m.target),
-        sender = lambda v, c, m, p: m.sender_id + ' : ' + m.sender_name,
+        sender = lambda v, c, m, p: get_CQ_display(m.sender_id + ' : ' + m.sender_name),
         date = lambda v, c, m, p: m.date.strftime('%Y-%m-%d'))
 
     def __init__(self, model, session):

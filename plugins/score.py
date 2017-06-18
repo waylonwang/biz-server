@@ -15,7 +15,7 @@ from common.bot import Bot
 from common.util import get_now, display_datetime, get_botname, get_yesno_display, get_acttype_display,\
     get_acttype_choice, get_target_display, output_datetime,\
     get_transtype_display, get_list_by_botassign, get_list_count_by_botassign, get_list_by_scoreaccount,\
-    get_list_count_by_scoreaccount, recover_target_value
+    get_list_count_by_scoreaccount, recover_target_value, get_CQ_display
 from plugin import PluginsRegistry
 
 __registry__ = pr = PluginsRegistry()
@@ -439,8 +439,9 @@ class ScoreMemberView(CVAdminModelView):
             )
         else:
             return 0
+        chr(126980)
 
-    column_formatters = dict(member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
+    column_formatters = dict(member = lambda v, c, m, p: get_CQ_display(m.member_id + ' : ' + m.member_name),
                              record_count = _record_formatter,
                              create_at = lambda v, c, m, p: display_datetime(m.create_at),
                              update_at = lambda v, c, m, p: display_datetime(m.update_at))
@@ -552,7 +553,7 @@ class ScoreRecordView(CVAdminModelView):
     column_formatters = dict(target = lambda v, c, m, p: get_target_display(m.target),
                              biz_type = lambda v, c, m, p: ScoreRule.get_rule(m.account, m.biz_type).description,
                              trans_type = lambda v, c, m, p: get_transtype_display(m.trans_type, m.amount < 0),
-                             member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
+                             member = lambda v, c, m, p: get_CQ_display(m.member_id + ' : ' + m.member_name),
                              amount = lambda v, c, m, p: abs(m.amount),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
                              time = lambda v, c, m, p: m.time.strftime('%H:%M'))

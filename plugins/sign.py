@@ -5,8 +5,9 @@ from flask_restful import Resource, reqparse
 import api_control as ac
 import db_control
 from app_view import CVAdminModelView
-from common.util import get_now, get_botname, get_target_composevalue, get_target_display, output_datetime, display_datetime,\
-    get_list_by_botassign, get_list_count_by_botassign
+from common.util import get_now, get_botname, get_target_composevalue, get_target_display, output_datetime,\
+    display_datetime,\
+    get_list_by_botassign, get_list_count_by_botassign, get_CQ_display
 from plugin import PluginsRegistry
 from plugins.score import ScoreRecord
 from plugins.setting import BotParam
@@ -91,10 +92,10 @@ class SignView(CVAdminModelView):
                          message = '消息')
     column_formatters = dict(botid = lambda v, c, m, p: get_botname(m.botid),
                              target = lambda v, c, m, p: get_target_display(m.target),
-                             member = lambda v, c, m, p: m.member_id + ' : ' + m.member_name,
+                             member = lambda v, c, m, p: get_CQ_display(m.member_id + ' : ' + m.member_name),
+                             message = lambda v, c, m, p: get_CQ_display(m.message),
                              date = lambda v, c, m, p: display_datetime(m.create_at, False),
-                             time = lambda v, c, m, p: m.time.strftime('%H:%M'),
-                             message = lambda v, c, m, p: m.message)
+                             time = lambda v, c, m, p: m.time.strftime('%H:%M'))
 
     column_default_sort = ('id', True)
 
