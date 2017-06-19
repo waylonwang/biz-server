@@ -1,7 +1,8 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from flask import request, redirect
+import math
+from flask import request, redirect, json
 from flask_admin import expose
 from flask_admin.form import rules, FormOpts, Select2Widget, DatePickerWidget
 from flask_admin.helpers import get_redirect_target, validate_form_on_submit
@@ -204,6 +205,7 @@ class Speak(db.Model):
             Speak.date <= date_to,
             Speak.sender_id == sender_id if sender_id is not None else 1 == 1
         ).first()
+
 
 @pr.register_model(73)
 class SpeakWash(db.Model):
@@ -724,6 +726,63 @@ class SpeakCountView(CVAdminModelView):
                            return_url = return_url,
                            brand = request.args.get("caption"))
 
+    @expose('/statistics/', methods = ('GET', 'POST'))
+    def get_statistics_data(self):
+        def get_speak_statistics(botid, target, date_from, date_to):
+            max_count = 0
+            min_count = 0
+            statistics_data = SpeakCount.statistics(botid,
+                                                    target_prefix2name(target.split('#')[0]),
+                                                    target.split('#')[1],
+                                                    date_from,
+                                                    date_to).fetchall()
+
+            for r in statistics_data:
+                max_count = max(max_count, int(r.message_count))
+                min_count = min(min_count if min_count != 0 else max_count, int(r.vaild_count))
+
+            return {'success': 1,
+                               'data': {
+                                   'botid': botid,
+                                   'target': target,
+                                   'statistics_data': [
+                                       {'date': r.date, 'message_count': r.message_count,
+                                        'vaild_count': r.vaild_count} for r
+                                       in statistics_data],
+                                   'max_speaks': math.ceil(max_count / 100) * 100,
+                                   'mix_speaks': math.floor(min_count / 100) * 100}
+                               }
+
+        def do_speak_statistics(botid, target, date_from, date_to):
+            if SpeakCount.do(botid,
+                             target_prefix2name(target.split('#')[0]),
+                             target.split('#')[1],
+                             date_from,
+                             date_to):
+                return {'success': 1}
+            else:
+                return {'success': 0}
+
+        type = request.form.get('type')
+        botid = request.form.get('botid')
+        target = request.form.get('target')
+        days = request.form.get('days')
+
+        if int(type) == 1:
+            if int(days) == 7 or int(days) == 30 or int(days) == 60:
+                return json.dumps(get_speak_statistics(botid,
+                                            target,
+                                            output_datetime(get_now() - timedelta(days = int(days)), True, False),
+                                            output_datetime(get_now(), True, False)))
+            else:
+                return json.dumps({'success': 0})
+        elif int(type) == 2:
+            return json.dumps(do_speak_statistics(botid,
+                                       target, output_datetime(get_now(), True, False),
+                                       output_datetime(get_now(), True, False)))
+        else:
+            return json.dumps({'success': 0})
+
 
 # Control--------------------------------------------------------------------------------------------------
 @ac.register_api('/speakrecord', endpoint = 'speakrecord')
@@ -1065,10 +1124,10 @@ class SpeakStatisticsAPI(Resource):
 
             args = parser.parse_args()
             records = SpeakCount.statistics(ac.get_bot(),
-                                           args['target_type'],
-                                           args['target_account'],
-                                           args['date_from'],
-                                           args['date_to'])
+                                            args['target_type'],
+                                            args['target_account'],
+                                            args['date_from'],
+                                            args['date_to'])
             result = []
             for record in records:
                 result.append({'botid': record.botid,

@@ -128,7 +128,7 @@ class CVAdminIndexView(AdminIndexView):
                                                                     False),
                                                     today).fetchall()
             if len(statistics_data) > 0:
-                speak_statistics[target.target] = statistics_data
+                speak_statistics[target.target] = [statistics_data,target.botid]
                 for r in statistics_data:
                     max_count = max(max_count, int(r.message_count))
                     mix_count = min(mix_count if mix_count !=0 else max_count, int(r.vaild_count))

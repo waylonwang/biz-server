@@ -1,6 +1,6 @@
 <!-- extend base layout -->
 {% extends "admin/master.html" %}
-{% from "admin/macros/areachart.html" import area_chart,count_icon %}
+{% from "admin/macros/speak_statistics.html" import speak_chart,speak_toprank,count_icon,set_chart_data %}
 
 {% block body %}
     <div class="row">
@@ -21,32 +21,14 @@
     <div class="row">
         <div class="col-lg-8">
             {% for t,o in speak_statistics.items() %}
-                {{ area_chart("[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(t.split('#')[0])+ ":" + t.split('#')[1] +"] 每日发言统计图",t+'-chart') }}
+                {{ speak_chart(t,o) }}
             {% endfor %}
             {#        {{bar_chart("Bar Chart Example")}}#}
             {#        {{timeline("Responsive Timeline")}}#}
         </div>
         <div class="col-lg-4">
             {% for t,o in speak_tops.items() %}
-                <div class="panel panel-default">
-                    <div class="panel-heading">
-                        <i class="fa fa-trophy fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(t.split('#')[0])+ ":" + t.split('#')[1] +"] 今日发言排行榜" }}
-                    </div>
-                    <ul class="list-group top-list">
-                        {% for r in o %}
-                            <li>
-                                <div class="list-group-item">
-                                    <div class="top-number">{{ loop.index }}</div>
-                                    <div class="top-id">{{ r.get('id') }}</div>
-                                    <div class="top-name">{{ r.get('name') }}</div>
-                                    <span class="pull-right text-muted small"><em>{{ r.get('count') }}</em></span>
-                                </div>
-                            </li>
-                        {% endfor %}
-                        <!-- /.list-group -->
-                    </ul>
-                    <!-- /.panel-body -->
-                </div>
+                {{ speak_toprank(t,o) }}
             {% endfor %}
 
             {#            {{ donut("Donut Chart Example") }}#}
@@ -65,32 +47,36 @@
     <script src="/bower_components/raphael/raphael.min.js"></script>
     <script src="/bower_components/morrisjs/morris.min.js"></script>
     <script language="javascript">
-        $(function () {
-
-            {% for t,o in speak_statistics.items() %}
-                Morris.Line({
-                    element: '{{ t }}-chart',
-                    data: [
-                        {% for record in o %}
-                            {
-                                date: '{{ record.date }}',
-                                message_count: {{ record.message_count }},
-                                vaild_count: {{ record.vaild_count }}
-                            }{% if not loop.last %},{% endif %}
-                        {% endfor %}
-                    ],
-                    xkey: 'date',
-                    ykeys: ['message_count', 'vaild_count'],
-                    labels: ['消息总数', '有效消息总数'],
-                    lineColors: ['#4f81bd', '#f79646'],
-                    pointSize: 2,
-                    continuousLine: false   ,
-                    ymax: 'auto {{ max_speaks }}',
-                    ymin: 'auto {{ mix_speaks }}',
-                    hideHover: false,
-                    resize: true
-                });
-            {% endfor %}
-        });
+        var charts = {}
+        function get_statistics_data(url, type, botid, target, days) {
+            $.ajax({
+                url: url,
+                type: 'POST',
+                dataType: 'json',
+                data: {"type": type, "botid": botid, "target": target, "days": days},
+                success: function (data) {
+                    if (data.success == 1) {
+                        var $graph = data.data;
+                        var $chart = charts[target.replace('#', '_')];
+                        $chart.setData($graph.statistics_data);
+                    }
+                }
+            });
+        };
+        function do_statistics(url, type, botid, target) {
+            $.ajax({
+                url: url,
+                type: 'POST',
+                dataType: 'json',
+                data: {"type": type, "botid": botid, "target": target},
+                success: function (data) {
+                    if (data.success == 1) {
+                    }
+                }
+            });
+        };
     </script>
+    {% for t,o in speak_statistics.items() %}
+        {{ set_chart_data(t,o) }}
+    {% endfor %}
 {% endblock %}
