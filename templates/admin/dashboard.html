@@ -68,7 +68,7 @@
         $(function () {
 
             {% for t,o in speak_statistics.items() %}
-                Morris.Area({
+                Morris.Line({
                     element: '{{ t }}-chart',
                     data: [
                         {% for record in o %}
@@ -80,12 +80,15 @@
                         {% endfor %}
                     ],
                     xkey: 'date',
-                    ykeys: ['vaild_count', 'message_count'],
-                    labels: ['有效消息总数', '消息总数'],
+                    ykeys: ['message_count', 'vaild_count'],
+                    labels: ['消息总数', '有效消息总数'],
+                    lineColors: ['#4f81bd', '#f79646'],
                     pointSize: 2,
-                    hideHover: 'auto',
-                    resize: true,
-                    lineColors: ['#f79646', '#4f81bd']
+                    continuousLine: false   ,
+                    ymax: 'auto {{ max_speaks }}',
+                    ymin: 'auto {{ mix_speaks }}',
+                    hideHover: false,
+                    resize: true
                 });
             {% endfor %}
         });

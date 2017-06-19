@@ -1,4 +1,5 @@
 import datetime
+import math
 import os
 import warnings
 
@@ -87,6 +88,8 @@ class CVAdminIndexView(AdminIndexView):
         from plugins.setting import TargetRule
 
         today = output_datetime(get_now(), True, False)
+        max_speaks = 0
+        mix_speaks = 0
         speak_statistics = {}
         speak_tops = {}
         speak_today_count = 0
@@ -116,6 +119,8 @@ class CVAdminIndexView(AdminIndexView):
             return sign_today_count
 
         def get_speak_statistics(speak_statistics, target, today):
+            max_count = 0
+            mix_count = 0
             statistics_data = SpeakCount.statistics(target.botid,
                                                     target_prefix2name(target.target.split('#')[0]),
                                                     target.target.split('#')[1],
@@ -124,14 +129,19 @@ class CVAdminIndexView(AdminIndexView):
                                                     today).fetchall()
             if len(statistics_data) > 0:
                 speak_statistics[target.target] = statistics_data
+                for r in statistics_data:
+                    max_count = max(max_count, int(r.message_count))
+                    mix_count = min(mix_count if mix_count !=0 else max_count, int(r.vaild_count))
+
+            return max_count, mix_count
 
         def get_speak_tops(speak_tops, target, today):
             records = Speak.get_top(target.botid,
-                                     target_prefix2name(target.target.split('#')[0]),
-                                     target.target.split('#')[1],
-                                     today,
-                                     today)
-            top_data=[{ 'name' : get_CQ_display(r.sender_name),'id': r.sender_id , 'count' :r.cnt} for r in records ]
+                                    target_prefix2name(target.target.split('#')[0]),
+                                    target.target.split('#')[1],
+                                    today,
+                                    today)
+            top_data = [{'name': get_CQ_display(r.sender_name), 'id': r.sender_id, 'count': r.cnt} for r in records]
             if len(top_data) > 0:
                 speak_tops[target.target] = top_data
 
@@ -148,11 +158,15 @@ class CVAdminIndexView(AdminIndexView):
             sign_today_count = get_sign_today_count(sign_today_count, target, today)
             point_today_total = get_point_today_total(point_today_total, target, today)
             score_today_total = get_score_today_total(score_today_total, target, today)
-            get_speak_statistics(speak_statistics, target, today)
+            speak_statistics_count = get_speak_statistics(speak_statistics, target, today)
             get_speak_tops(speak_tops, target, today)
+            max_speaks = max(max_speaks, speak_statistics_count[0])
+            mix_speaks = min(mix_speaks if mix_speaks !=0 else max_speaks, speak_statistics_count[1])
 
         return self.render('admin/dashboard.html',
                            today = today,
+                           max_speaks = math.ceil(max_speaks / 100) * 100,
+                           mix_speaks = math.floor(mix_speaks / 100) * 100,
                            speak_today_count = speak_today_count,
                            sign_today_count = sign_today_count,
                            point_today_total = point_today_total,

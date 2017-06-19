@@ -294,10 +294,12 @@ class ScoreRecord(db.Model):
         else:
             member_id = member
 
+        accounts = ScoreAccount.find_by_target(botid, target_type, target_account)
+
         return ScoreRecord.query.session.query(
             func.sum(func.abs(ScoreRecord.amount)).label('total')
         ).filter(
-            ScoreRecord.account.in_((r.name for r in ScoreAccount.find_by_target(botid, target_type, target_account))),
+            ScoreRecord.account.in_((r.name for r in accounts)) if len(accounts) > 0 else 1 == 1,
             ScoreRecord.date >= date_from,
             ScoreRecord.date <= date_to,
             ScoreRecord.member_id == member_id if member_id is not None else 1 == 1
