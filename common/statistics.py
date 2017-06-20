@@ -164,7 +164,7 @@ def _get_counts(botid):
     point_today_total = 0
     score_today_total = 0
 
-    today = '2017-05-30'  # output_datetime(get_now(), True, False)
+    today = output_datetime(get_now(), True, False)
 
     for target in targets:
         speak_today_count += _get_speak_today_count(botid, target, today, today)
