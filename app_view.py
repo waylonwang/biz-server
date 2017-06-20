@@ -1,5 +1,3 @@
-import datetime
-import math
 import os
 import warnings
 
@@ -9,10 +7,10 @@ from flask_admin import Admin, AdminIndexView, expose, helpers
 from flask_admin.contrib.fileadmin import FileAdmin
 from flask_admin.contrib.sqla import ModelView
 from flask_principal import identity_changed, Identity, current_app, AnonymousIdentity
+from flask_restful import abort
 from werkzeug.security import generate_password_hash
 
 import db_control
-from common.util import target_prefix2name, get_now, output_datetime, get_CQ_display
 from env import get_db_dir
 
 # import stub as stub
@@ -136,10 +134,13 @@ class CVAdminIndexView(AdminIndexView):
     def dashboard_view(self):
         from plugins.setting import TargetRule
 
-        records=TargetRule.find_allow_by_user(login.current_user.username)
-        targets={r.target:r.botid for r in records}
+        if not login.current_user.is_authenticated:
+            abort(401)
 
-        return self.render('admin/dashboard.html',targets = targets)
+        records = TargetRule.find_allow_by_user(login.current_user.username)
+        targets = {r.target: r.botid for r in records}
+
+        return self.render('admin/dashboard.html', targets = targets)
 
     @expose('/statistics/', methods = ('GET', 'POST'))
     def statistics_service(self):
@@ -147,6 +148,7 @@ class CVAdminIndexView(AdminIndexView):
         from common.statistics import get_statistics_data
 
         return json.dumps(get_statistics_data(request))
+
 
 def init(app):
     '''
@@ -182,6 +184,10 @@ def init(app):
     @app.route('/js/<path:path>')
     def send_js(path):
         return send_from_directory(os.path.join(app.root_path, 'js'), path)
+
+    @app.errorhandler(401)
+    def unauthenticated(e):
+        return render_template('401.html'), 401
 
     @app.errorhandler(403)
     def forbidden(e):

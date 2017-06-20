@@ -1,6 +1,7 @@
 '''
     统计服务接口
 '''
+from flask_restful import abort
 
 
 def get_statistics_data(request):
@@ -157,6 +158,10 @@ def _get_counts(botid):
 
     from common import login
     from common.util import output_datetime, get_now
+
+    if not login.current_user.is_authenticated :
+        abort(401)
+
     targets = TargetRule.find_allow_by_user(login.current_user.username)
 
     speak_today_count = 0
