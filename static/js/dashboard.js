@@ -51,6 +51,7 @@ function init_statistics_panel(botid, target, url) {
         get_statistics_data(botid, target, url, 1, 0);
         setInterval(function () {
             get_statistics_data(botid, target, url, 1, 0);
+            get_statistics_data(botid, target, url, 3, 1);
         }, 30000);
         $('#' + targetid + '-chart-action-3').trigger("click");
         $('#' + targetid + '-rank-action-1').trigger("click");
