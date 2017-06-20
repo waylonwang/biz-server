@@ -1,7 +1,8 @@
-{% macro speak_chart(target,obj) %}
+{% macro speak_chart(target) %}
     <div class="panel panel-default">
         <div class="panel-heading">
-            <i class="fa fa-bar-chart-o fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(target.split('#')[0])+ ":" + target.split('#')[1] +"] 每日发言统计图" }}(<span id="{{ target|replace('#','_') +'-chart-title' }}" ></span>)
+            <i class="fa fa-bar-chart-o fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(target.split('#')[0])+ ":" + target.split('#')[1] +"] 每日发言统计图" }}(<span
+                id="{{ target|replace('#','_') +'-chart-title' }}"></span>)
             <div class="pull-right">
                 <div class="btn-group">
                     <button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">
@@ -32,56 +33,12 @@
         <!-- /.panel-body -->
     </div>
 {% endmacro %}
-{% macro set_chart_data(target,obj) %}
-    <script language="javascript">
-        charts['{{ target|replace('#','_') }}'] = Morris.Line({
-            element: '{{ target|replace('#','_')  + '-chart' }}',
-            xkey: 'date',
-            ykeys: ['message_count', 'vaild_count'],
-            labels: ['消息总数', '有效消息总数'],
-            lineColors: ['#4f81bd', '#f79646'],
-            pointSize: 2,
-            continuousLine: false,
-            hideHover: false,
-            resize: true
-        });
 
-        $('#{{ target|replace('#','_') +'-chart-action-1' }}').click(function () {
-            get_statistics_data('{{ url_for("speakcount.get_statistics_data") }}', 1, '{{ obj[1] }}', '{{ target }}', 7);
-            $('#{{ target|replace('#','_') +'-chart-title' }}').text('7天')
-            $('#{{ target|replace('#','_') +'-chart-title' }}').attr('last-status','{{ target|replace('#','_') +'-chart-action-1' }}')
-        });
-
-        $('#{{ target|replace('#','_') +'-chart-action-2' }}').click(function () {
-            get_statistics_data('{{ url_for("speakcount.get_statistics_data") }}', 1, '{{ obj[1] }}', '{{ target }}', 30);
-            $('#{{ target|replace('#','_') +'-chart-title' }}').text('30天')
-            $('#{{ target|replace('#','_') +'-chart-title' }}').attr('last-status','{{ target|replace('#','_') +'-chart-action-2' }}')
-        });
-
-        $('#{{ target|replace('#','_') +'-chart-action-3' }}').click(function () {
-            get_statistics_data('{{ url_for("speakcount.get_statistics_data") }}', 1, '{{ obj[1] }}', '{{ target }}', 60);
-            $('#{{ target|replace('#','_') +'-chart-title' }}').text('60天')
-            $('#{{ target|replace('#','_') +'-chart-title' }}').attr('last-status','{{ target|replace('#','_') +'-chart-action-3' }}')
-        });
-
-        $('#{{ target|replace('#','_') +'-chart-action-4' }}').click(function () {
-            title=$('#{{ target|replace('#','_') +'-chart-title' }}').text()
-            $('#{{ target|replace('#','_') +'-chart-title' }}').text('重算中...')
-            do_statistics('{{ url_for("speakcount.get_statistics_data") }}', 2, '{{ obj[1] }}', '{{ target }}');
-            $('#{{ target|replace('#','_') +'-chart-title' }}').text(title)
-            $('#'+$('#{{ target|replace('#','_') +'-chart-title' }}').attr('last-status')).trigger("click");
-        });
-
-        $(document).ready(function () {
-            $('#{{ target|replace('#','_') +'-chart-action-3' }}').trigger("click");
-        });
-    </script>
-{% endmacro %}
-
-{% macro speak_toprank(target,obj) %}
+{% macro speak_toprank(target) %}
     <div class="panel panel-default">
         <div class="panel-heading">
-            <i class="fa fa-trophy fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(target.split('#')[0])+ ":" + target.split('#')[1] +"] 今日发言排行榜" }}
+            <i class="fa fa-trophy fa-fw"></i> {{ "[" + {'g': '群', 'd': '组', 'p': '单聊'}.get(target.split('#')[0])+ ":" + target.split('#')[1] +"]" }}<span
+                id="{{ target|replace('#','_') +'-rank-title' }}"></span>发言排行榜
             <div class="pull-right">
                 <div class="btn-group">
                     <button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">
@@ -89,36 +46,26 @@
                         <span class="caret"></span>
                     </button>
                     <ul class="dropdown-menu pull-right" role="menu">
-                        <li><a href="#">查询今天</a>
+                        <li><a id="{{ target|replace('#','_') +'-rank-action-1' }}">查询今天</a>
                         </li>
-                        <li><a href="#">查询昨天</a>
+                        <li><a id="{{ target|replace('#','_') +'-rank-action-2' }}">查询昨天</a>
                         </li>
-                        <li><a href="#">查询7天内</a>
+                        <li><a id="{{ target|replace('#','_') +'-rank-action-3' }}">查询7天内</a>
                         </li>
-                        <li><a href="#">查询全部</a>
+                        <li><a id="{{ target|replace('#','_') +'-rank-action-4' }}">查询全部</a>
                         </li>
                     </ul>
                 </div>
             </div>
         </div>
-        <ul class="list-group top-list" id="{{ target +'-rank' }}">
-            {% for r in obj %}
-                <li>
-                    <div class="list-group-item">
-                        <div class="top-number">{{ loop.index }}</div>
-                        <div class="top-id">{{ r.get('id') }}</div>
-                        <div class="top-name">{{ r.get('name') }}</div>
-                        <span class="pull-right text-muted small"><em>{{ r.get('count') }}</em></span>
-                    </div>
-                </li>
-            {% endfor %}
+        <ul class="list-group top-list" id="{{ target|replace('#','_') +'-rank' }}">
             <!-- /.list-group -->
         </ul>
         <!-- /.panel-body -->
     </div>
 {% endmacro %}
 
-{% macro count_icon(count, title, icontype, color, url) %}
+{% macro count_icon(id, title, icontype, color, url) %}
     <div class="panel panel-{{ color }}">
         <div class="panel-heading">
             <div class="row">
@@ -126,7 +73,7 @@
                     <i class="fa fa-{{ icontype }} fa-5x"></i>
                 </div>
                 <div class="col-xs-9 text-right">
-                    <div class="huge">{{ count }}</div>
+                    <div class="huge" id={{ id }}></div>
                     <div>{{ title }}</div>
                 </div>
             </div>

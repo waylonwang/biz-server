@@ -17,6 +17,7 @@ from env import get_db_dir
 
 # import stub as stub
 
+
 admin = None
 
 
@@ -79,101 +80,6 @@ class CVAdminIndexView(AdminIndexView):
         # 没有helpers的引用，在layout.html中set render_ctx = h.resolve_ctx()会出错，最终导致jinja无法对form_rules进行渲染
         # return render_template('admin/dashboard.html', admin_view = self)
 
-    @expose('/dashboard/', methods = ('GET', 'POST'))
-    def dashboard_view(self):
-        from plugins.speak import Speak, SpeakCount
-        from plugins.sign import Sign
-        from plugins.point import Point
-        from plugins.score import ScoreRecord
-        from plugins.setting import TargetRule
-
-        today = output_datetime(get_now(), True, False)
-        max_speaks = 0
-        mix_speaks = 0
-        speak_statistics = {}
-        speak_tops = {}
-        speak_today_count = 0
-        sign_today_count = 0
-        point_today_total = 0
-        score_today_total = 0
-
-        def get_score_today_total(score_today_total, target, today):
-            score_today = ScoreRecord.get_flow(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                               target.target.split('#')[1], today, today)
-            if score_today.total is not None:
-                score_today_total += score_today.total
-            return score_today_total
-
-        def get_point_today_total(point_today_total, target, today):
-            point_today = Point.get_total(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                          target.target.split('#')[1], today, today)
-            if point_today.total_success is not None:
-                point_today_total += point_today.total_success
-            return point_today_total
-
-        def get_sign_today_count(sign_today_count, target, today):
-            sign_today = Sign.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                        target.target.split('#')[1], today, today)
-            if sign_today.cnt is not None:
-                sign_today_count += sign_today.cnt
-            return sign_today_count
-
-        def get_speak_statistics(speak_statistics, target, today):
-            max_count = 0
-            mix_count = 0
-            statistics_data = SpeakCount.statistics(target.botid,
-                                                    target_prefix2name(target.target.split('#')[0]),
-                                                    target.target.split('#')[1],
-                                                    output_datetime(get_now() - datetime.timedelta(days = 60), True,
-                                                                    False),
-                                                    today).fetchall()
-            if len(statistics_data) > 0:
-                speak_statistics[target.target] = [statistics_data,target.botid]
-                for r in statistics_data:
-                    max_count = max(max_count, int(r.message_count))
-                    mix_count = min(mix_count if mix_count !=0 else max_count, int(r.vaild_count))
-
-            return max_count, mix_count
-
-        def get_speak_tops(speak_tops, target, today):
-            records = Speak.get_top(target.botid,
-                                    target_prefix2name(target.target.split('#')[0]),
-                                    target.target.split('#')[1],
-                                    today,
-                                    today)
-            top_data = [{'name': get_CQ_display(r.sender_name), 'id': r.sender_id, 'count': r.cnt} for r in records]
-            if len(top_data) > 0:
-                speak_tops[target.target] = top_data
-
-        def get_speak_today_count(speak_today_count, target, today):
-            speak_today = Speak.get_count(target.botid, target_prefix2name(target.target.split('#')[0]),
-                                          target.target.split('#')[1], today, today)
-            if speak_today.cnt_full is not None:
-                speak_today_count += speak_today.cnt_full
-            return speak_today_count
-
-        targets = TargetRule.find_allow_by_user(login.current_user.username)
-        for target in targets:
-            speak_today_count = get_speak_today_count(speak_today_count, target, today)
-            sign_today_count = get_sign_today_count(sign_today_count, target, today)
-            point_today_total = get_point_today_total(point_today_total, target, today)
-            score_today_total = get_score_today_total(score_today_total, target, today)
-            speak_statistics_count = get_speak_statistics(speak_statistics, target, today)
-            get_speak_tops(speak_tops, target, today)
-            max_speaks = max(max_speaks, speak_statistics_count[0])
-            mix_speaks = min(mix_speaks if mix_speaks !=0 else max_speaks, speak_statistics_count[1])
-
-        return self.render('admin/dashboard.html',
-                           today = today,
-                           max_speaks = math.ceil(max_speaks / 100) * 100,
-                           mix_speaks = math.floor(mix_speaks / 100) * 100,
-                           speak_today_count = speak_today_count,
-                           sign_today_count = sign_today_count,
-                           point_today_total = point_today_total,
-                           score_today_total = score_today_total,
-                           speak_statistics = speak_statistics,
-                           speak_tops = speak_tops)
-
     @expose('/login/', methods = ('GET', 'POST'))
     def login_view(self):
         # handle user login
@@ -226,6 +132,21 @@ class CVAdminIndexView(AdminIndexView):
                               identity = AnonymousIdentity())
         return redirect(url_for('.login_view'))
 
+    @expose('/dashboard/', methods = ('GET', 'POST'))
+    def dashboard_view(self):
+        from plugins.setting import TargetRule
+
+        records=TargetRule.find_allow_by_user(login.current_user.username)
+        targets={r.target:r.botid for r in records}
+
+        return self.render('admin/dashboard.html',targets = targets)
+
+    @expose('/statistics/', methods = ('GET', 'POST'))
+    def statistics_service(self):
+        from flask import json
+        from common.statistics import get_statistics_data
+
+        return json.dumps(get_statistics_data(request))
 
 def init(app):
     '''

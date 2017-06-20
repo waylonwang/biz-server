@@ -5,78 +5,43 @@
 {% block body %}
     <div class="row">
         <div class="col-lg-3 col-md-6">
-            {{ count_icon(speak_today_count, "今日发言数!", "comments", "primary", url_for('speak.index_view', flt1_21 = today)) }}
+            {{ count_icon('speak_today_count', "今日发言数!", "comments", "primary", url_for('speak.index_view', flt1_21 = today)) }}
         </div>
         <div class="col-lg-3 col-md-6">
-            {{ count_icon(sign_today_count, "今日签到数!", "flag-checkered", "green", url_for('sign.index_view', flt1_21 = today)) }}
+            {{ count_icon('sign_today_count', "今日签到数!", "flag-checkered", "green", url_for('sign.index_view', flt1_21 = today)) }}
         </div>
         <div class="col-lg-3 col-md-6">
-            {{ count_icon(point_today_total, "今日报点成功点数!", "bullhorn", "yellow", url_for('point.index_view', flt1_42 = today)) }}
+            {{ count_icon('point_today_total', "今日报点成功点数!", "bullhorn", "yellow", url_for('point.index_view', flt1_42 = today)) }}
         </div>
         <div class="col-lg-3 col-md-6">
-            {{ count_icon(score_today_total, "今日积分流量!", "money", "red", url_for('scorerecord.index_view', flt1_35 = today)) }}
+            {{ count_icon('score_today_total', "今日积分流量!", "money", "red", url_for('scorerecord.index_view', flt1_35 = today)) }}
         </div>
     </div>
 
     <div class="row">
         <div class="col-lg-8">
-            {% for t,o in speak_statistics.items() %}
-                {{ speak_chart(t,o) }}
+            {% for t,b in targets.items() %}
+                {{ speak_chart(t) }}
             {% endfor %}
-            {#        {{bar_chart("Bar Chart Example")}}#}
-            {#        {{timeline("Responsive Timeline")}}#}
         </div>
         <div class="col-lg-4">
-            {% for t,o in speak_tops.items() %}
-                {{ speak_toprank(t,o) }}
+            {% for t,b in targets.items() %}
+                {{ speak_toprank(t) }}
             {% endfor %}
-
-            {#            {{ donut("Donut Chart Example") }}#}
-            {#            {{ chat("Chat") }}#}
+{#            {{ chat("Chat") }}#}
         </div>
     </div>
 
 {% endblock %}
 
 {% block tail %}
-
-    <!-- Timeline CSS -->
-    {#    <link href="/static/css/timeline.css" rel="stylesheet">#}
-
     <!-- Morris Charts JavaScript -->
     <script src="/bower_components/raphael/raphael.min.js"></script>
     <script src="/bower_components/morrisjs/morris.min.js"></script>
-    <script language="javascript">
-        var charts = {}
-        function get_statistics_data(url, type, botid, target, days) {
-            $.ajax({
-                url: url,
-                type: 'POST',
-                dataType: 'json',
-                data: {"type": type, "botid": botid, "target": target, "days": days},
-                success: function (data) {
-                    if (data.success == 1) {
-                        var $graph = data.data;
-                        var $chart = charts[target.replace('#', '_')];
-                        $chart.setData($graph.statistics_data);
-                    }
-                }
-            });
-        };
-        function do_statistics(url, type, botid, target) {
-            $.ajax({
-                url: url,
-                type: 'POST',
-                dataType: 'json',
-                data: {"type": type, "botid": botid, "target": target},
-                success: function (data) {
-                    if (data.success == 1) {
-                    }
-                }
-            });
-        };
-    </script>
-    {% for t,o in speak_statistics.items() %}
-        {{ set_chart_data(t,o) }}
+    <script src="/static/js/dashboard.js"></script>
+    {% for t,b in targets.items() %}
+        <script language="javascript">
+            init_statistics_panel('{{ b }}', '{{ t }}', '{{ url_for("admin.statistics_service") }}')
+        </script>
     {% endfor %}
 {% endblock %}

@@ -833,6 +833,10 @@ ul[class*=top-list] > li:first-child .top-number {
     background: #d9534f;
 }
 
+ul[class*=top-list] > li:nth-child(2) .top-number,ul[class*=top-list] > li:nth-child(3) .top-number {
+    background: #ed7d31;
+}
+
 .top-id {
     display: inline-block;
     width: 80px;
@@ -850,7 +854,7 @@ ul[class*=top-list] > li:first-child .top-number {
 
 .morris-hover {
     position: absolute;
-    z-index: 1000;
+    /*z-index: 1000;*/
 }
 
 .morris-hover.morris-default-style {
