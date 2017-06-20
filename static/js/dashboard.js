@@ -52,6 +52,7 @@ function init_statistics_panel(botid, target, url) {
         setInterval(function () {
             get_statistics_data(botid, target, url, 1, 0);
             get_statistics_data(botid, target, url, 3, 1);
+            $('#' + $title.attr('last-status')).trigger("click");
         }, 30000);
         $('#' + targetid + '-chart-action-3').trigger("click");
         $('#' + targetid + '-rank-action-1').trigger("click");
@@ -76,7 +77,6 @@ function get_statistics_data(botid, target, url, type, days) {
                 } else if (type === 2) {
                     // 查询发言统计
                     if (data.data.statistics_data.length > 0) {
-                        // charts[targetid].setData(data.data.statistics_data);
                         $('#' + targetid + '-chart').html('');
                         Morris.Line({
                             element: targetid + '-chart',
@@ -95,8 +95,6 @@ function get_statistics_data(botid, target, url, type, days) {
                     } else {
                         $('#' + targetid + '-chart').html('<div class="text-center text-info">暂无数据!</div>')
                     }
-
-
                 } else if (type === 3) {
                     // 重新计算发言统计
 
